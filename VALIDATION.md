@@ -72,3 +72,7 @@ Reduced task-row padding and detail section gaps, moved subtask counts inline, a
 ## Task history and swipe navigation
 
 All 12 core tests pass, including history round trips, forward-branch replacement, deleted-entry removal, swipe reversal, vertical direction locking, unavailable directions, and single commit per gesture. Release build succeeds. Native keyboard checks exercised list → task → subtask → back → forward → back → back to list through the same navigation methods used by swipes. The gesture handler only accepts precise phased scroll input, excludes momentum from navigation, and leaves the tab strip alone. A clipped circular edge indicator tracks progress and springs away after completion/cancellation. Physical two-finger feel and haptic feedback require hands-on trackpad validation; desktop automation does not reproduce that input reliably.
+
+## Symmetric swipe progress
+
+Replaced the separately clipped full-circle strokes with a visible half-circle stroke and a mirrored copy for forward navigation. Rendered the actual SwiftUI indicator at 25%, 50%, 75%, and 100% using ImageRenderer and visually verified equal progress on both edges. Release build succeeds. Navigation and gesture thresholds are unchanged.

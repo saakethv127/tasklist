@@ -55,21 +55,30 @@ struct PanelView: View {
     private var swipeIndicator: some View {
         let progress = store.swipeProgress
         let back = store.swipeDirection == 1
+        // Draw only the exposed half, then mirror the entire indicator. Trimming
+        // a full circle independently on each edge hid different progress ranges.
         return ZStack {
             Circle().fill(Color(white: 0.16))
-            Circle().trim(from: 0, to: progress)
+            Circle().trim(from: 0, to: 0.5)
+                .stroke(Color.white.opacity(0.12), lineWidth: 2.5)
+                .rotationEffect(.degrees(-90)).padding(5)
+            Circle().trim(from: 0, to: 0.5 * progress)
                 .stroke(Color.white.opacity(0.85), style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
                 .rotationEffect(.degrees(-90)).padding(5)
-            Image(systemName: back ? "arrow.left" : "arrow.right")
+            Image(systemName: "arrow.left")
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.5 + 0.5 * progress))
-                .offset(x: back ? 10 : -10)
+                .offset(x: 17)
         }
         .frame(width: 76, height: 76)
+        .offset(x: -38)
+        .frame(width: 38, height: 76, alignment: .leading)
+        .clipped()
+        .scaleEffect(x: 0.8 + 0.2 * progress, y: 0.8 + 0.2 * progress, anchor: .leading)
+        .scaleEffect(x: back ? 1 : -1, y: 1)
         .shadow(color: .black.opacity(0.25), radius: 7)
-        .offset(x: (back ? -1 : 1) * (76 - 38 * progress))
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: back ? .leading : .trailing)
-        .opacity(progress > 0 ? 1 : 0)
+        .opacity(min(1, progress * 8))
         .clipped().allowsHitTesting(false).accessibilityHidden(true)
     }
 
