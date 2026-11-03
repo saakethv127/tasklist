@@ -64,3 +64,7 @@ Bundled 2,019 Lucide SVG icons with local name, tag, and category search. All 10
 ## Flat frosted backdrop and appearance access
 
 Replaced refractive glass with an active behind-window HUD blur and a 30% black tint. The content sits outside the visual-effect view to avoid vibrancy. Window alpha is now 1 so unblurred background text cannot leak through compositor transparency. Release build succeeds. Native UI checks confirmed that naming a new tab opens its color/icon picker, Escape dismisses it, and Command-Shift-A reopens it for the current tab. Visually inspected the flat backdrop and rounded clipping.
+
+## Compact rows and nested disclosure
+
+Reduced task-row padding and detail section gaps, moved subtask counts inline, and centered the detail title beside its completion circle. Native UI checks with a three-level test tree verified independent nested collapse, full parent collapse, and preservation of child collapse state when the parent is reopened. Inspected screenshots of the compact main list and detail title/subtask layout. Release build succeeds.

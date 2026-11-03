@@ -78,3 +78,5 @@ Quit any existing Tasklist instance first. `--data-path` separates test data fro
 The app stays resident while hidden for fast toggling. It has no recurring timers. Its only scheduled work is a short save debounce after data changes. The bundle is locally signed for personal use; distributing it to other Macs would require Developer ID signing and notarization.
 
 Lucide icons and search metadata are bundled locally; the picker makes no network requests. Upstream attribution is included in `Sources/TasklistCore/Resources/Lucide-LICENSE.txt` and the app bundle. Run `python3 scripts/vendor-lucide.py` to reproduce the pinned collection, or pass a full upstream commit SHA to update it. Existing legacy icon selections remain supported.
+
+Task rows use compact spacing in lists and details. Click the chevron to the left of a parent task to collapse or expand its subtasks; clicking its title opens details. Nested collapse choices are retained during the app session.

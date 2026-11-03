@@ -151,7 +151,7 @@ struct PanelView: View {
             } else {
                 ScrollViewReader { proxy in
                     ScrollView {
-                        LazyVStack(spacing: 3) {
+                        LazyVStack(spacing: 2) {
                             ForEach(store.visibleRows, id: \.task.id) { row in
                                 taskRow(row.task, depth: row.depth).id(row.task.id)
                             }
@@ -164,26 +164,40 @@ struct PanelView: View {
         .frame(maxHeight: .infinity)
     }
 
-    private func taskRow(_ task: TaskItem, depth: Int = 0) -> some View {
+    private func taskRow(_ task: TaskItem, depth: Int = 0, showsDisclosure: Bool = true) -> some View {
         let children = store.tab.children(of: task.id)
-        return HStack(alignment: .center, spacing: 9) {
-            if depth > 0 { Image(systemName: "arrow.turn.down.right").font(.system(size: 10)).foregroundStyle(.tertiary) }
+        let collapsed = store.collapsedTaskIDs.contains(task.id)
+        return HStack(alignment: .center, spacing: 6) {
+            if showsDisclosure {
+                if !children.isEmpty {
+                    Button { store.toggleExpansion(task.id) } label: {
+                        Image(systemName: collapsed ? "chevron.right" : "chevron.down")
+                            .font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
+                            .frame(width: 20, height: 26).contentShape(Rectangle())
+                    }.buttonStyle(.plain)
+                        .help(collapsed ? "Expand subtasks" : "Collapse subtasks")
+                        .accessibilityLabel("\(collapsed ? "Expand" : "Collapse") subtasks: \(task.title)")
+                } else {
+                    Color.clear.frame(width: 20, height: 1)
+                }
+            }
             Button { store.toggle(task) } label: {
                 Image(systemName: task.isComplete ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: depth > 0 ? 15 : 18, weight: .light))
                     .foregroundStyle(task.isComplete ? accent : Color.secondary.opacity(0.65))
-                    .frame(width: 22, height: 28)
+                    .frame(width: 22, height: 24)
             }.buttonStyle(.plain).accessibilityLabel("\(task.isComplete ? "Reopen" : "Complete") \(task.title)")
             Button { store.openTask(task.id) } label: {
                 HStack(spacing: 6) {
-                    VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) {
                         Text(task.title.isEmpty ? "Untitled task" : task.title)
                             .font(.system(size: depth > 0 ? 12 : 13, weight: depth > 0 ? .regular : .medium))
                             .strikethrough(task.isComplete).foregroundStyle(task.isComplete ? .secondary : .primary)
                             .lineLimit(2).multilineTextAlignment(.leading)
                         if !children.isEmpty {
-                            Label("\(children.filter(\.isComplete).count)/\(children.count) subtasks", systemImage: "list.bullet.indent")
-                                .font(.system(size: 10)).foregroundStyle(.secondary)
+                            Text("\(children.filter(\.isComplete).count)/\(children.count)")
+                                .font(.system(size: 10)).foregroundStyle(.secondary).fixedSize()
+                                .accessibilityLabel("\(children.filter(\.isComplete).count) of \(children.count) subtasks complete")
                         }
                     }
                     Spacer(minLength: 2)
@@ -192,10 +206,13 @@ struct PanelView: View {
                 }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
             }.buttonStyle(.plain).accessibilityLabel("Open \(task.parentID == nil ? "task" : "subtask"): \(task.title)")
         }
-        .padding(.vertical, 7).padding(.horizontal, 9)
+        .padding(.vertical, 3).padding(.horizontal, 6)
         .padding(.leading, CGFloat(min(depth, 3)) * 12)
         .background(store.selectedTaskID == task.id ? accent.opacity(0.10) : .primary.opacity(depth == 0 ? 0.025 : 0), in: RoundedRectangle(cornerRadius: 10))
         .contextMenu {
+            if showsDisclosure && !children.isEmpty {
+                Button(collapsed ? "Expand subtasks" : "Collapse subtasks") { store.toggleExpansion(task.id) }
+            }
             Button("Open details") { store.openTask(task.id) }
             Button("Add subtask") { store.openTask(task.id); store.focusEntry() }
             Button(task.isComplete ? "Mark incomplete" : "Complete") { store.toggle(task) }
@@ -216,12 +233,12 @@ struct PanelView: View {
                 iconButton("trash", "Delete task · ⌘⌫") { store.beginPrompt(.deleteTask(task.id)) }
             }.padding(.bottom, 8)
             ScrollView {
-                VStack(alignment: .leading, spacing: 17) {
-                    HStack(alignment: .top, spacing: 10) {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(alignment: .center, spacing: 10) {
                         Button { store.toggle(task) } label: {
                             Image(systemName: task.isComplete ? "checkmark.circle.fill" : "circle")
                                 .font(.system(size: 22, weight: .light)).foregroundStyle(task.isComplete ? accent : .secondary)
-                        }.buttonStyle(.plain).padding(.top, 3).accessibilityLabel(task.isComplete ? "Reopen task" : "Complete task")
+                        }.buttonStyle(.plain).accessibilityLabel(task.isComplete ? "Reopen task" : "Complete task")
                         TextField("Task title", text: Binding(get: { store.detail?.title ?? "" }, set: { store.updateTask(task.id, title: $0) }), axis: .vertical)
                             .textFieldStyle(.plain).font(.system(size: 20, weight: .semibold, design: .rounded))
                             .lineLimit(1...4).accessibilityLabel("Task title")
@@ -234,7 +251,11 @@ struct PanelView: View {
                             let children = store.tab.children(of: task.id)
                             Text("\(children.filter(\.isComplete).count) / \(children.count)").font(.system(size: 10)).foregroundStyle(.secondary)
                         }
-                        ForEach(store.tab.children(of: task.id)) { child in taskRow(child, depth: 1) }
+                        VStack(spacing: 2) {
+                            ForEach(store.tab.children(of: task.id)) { child in
+                                taskRow(child, showsDisclosure: false)
+                            }
+                        }
                         HStack(spacing: 8) {
                             Image(systemName: "arrow.turn.down.right").font(.system(size: 11)).foregroundStyle(accent)
                             TextField("Add a subtask…", text: $store.subtaskDraft).textFieldStyle(.plain)
@@ -271,7 +292,7 @@ struct PanelView: View {
                 Button { store.editingNotes = true } label: {
                     Text("Add notes, links, or a little context…")
                         .font(.system(size: 12)).foregroundStyle(.tertiary)
-                        .frame(maxWidth: .infinity, minHeight: 62, alignment: .topLeading).padding(11)
+                        .frame(maxWidth: .infinity, minHeight: 32, alignment: .topLeading).padding(11)
                         .background(.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 10))
                 }.buttonStyle(.plain).accessibilityLabel("Add description")
             } else {

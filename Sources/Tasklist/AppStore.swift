@@ -19,6 +19,7 @@ enum Prompt {
     @Published var prompt: Prompt?
     @Published var promptText = ""
     @Published var searchIndex = 0
+    @Published var collapsedTaskIDs: Set<UUID> = []
     @Published var showCompleted = true
     @Published var showHelp = false
     @Published var appearanceTabID: UUID?
@@ -56,10 +57,21 @@ enum Prompt {
                 let children = walk(task.id, depth + 1)
                 // Keep completed parents visible if they contain unfinished children.
                 guard showCompleted || !task.isComplete || !children.isEmpty else { return [] }
-                return [(task, depth)] + children
+                return [(task, depth)] + (collapsedTaskIDs.contains(task.id) ? [] : children)
             }
         }
         return walk(nil, 0)
+    }
+
+    func toggleExpansion(_ taskID: UUID) {
+        if collapsedTaskIDs.contains(taskID) {
+            collapsedTaskIDs.remove(taskID)
+        } else {
+            collapsedTaskIDs.insert(taskID)
+            if let selectedTaskID, tab.descendants(of: taskID).contains(selectedTaskID) {
+                self.selectedTaskID = taskID
+            }
+        }
     }
 
     func change(_ update: (inout Workspace) -> Void) {
