@@ -44,8 +44,8 @@ The menu-bar checklist icon also toggles the panel. Right-click it to quit. The 
 | ⌘T | New tab, then choose color and icon |
 | ⌘⇧A | Open / close current tab appearance |
 | ⌘W | Confirm deletion of the current tab |
-| ⌘⌥← | Back to parent task or tab list |
-| ⌘⌥→ | Open the selected task from the list |
+| ⌘⌥← | Back through task navigation history |
+| ⌘⌥→ | Forward through task navigation history |
 | ⌘N | Focus task / subtask quick-add field |
 | ⌘⌫ | Confirm deletion of the selected / open task |
 | Return / Escape | Confirm / cancel a modal |
@@ -80,3 +80,5 @@ The app stays resident while hidden for fast toggling. It has no recurring timer
 Lucide icons and search metadata are bundled locally; the picker makes no network requests. Upstream attribution is included in `Sources/TasklistCore/Resources/Lucide-LICENSE.txt` and the app bundle. Run `python3 scripts/vendor-lucide.py` to reproduce the pinned collection, or pass a full upstream commit SHA to update it. Existing legacy icon selections remain supported.
 
 Task rows use compact spacing in lists and details. Click the chevron to the left of a parent task to collapse or expand its subtasks; clicking its title opens details. Nested collapse choices are retained during the app session.
+
+Two-finger horizontal swipes over the task content navigate session history: swipe right for back, left for forward. An edge semicircle and arrow fill with the gesture; reaching the threshold navigates once with a light haptic tick. Short gestures retract, and vertical scrolling stays available. History resets when switching tabs; opening another task after going back replaces the forward branch. The tab strip keeps its own horizontal scrolling.

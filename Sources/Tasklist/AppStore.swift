@@ -11,6 +11,11 @@ enum Prompt {
 @MainActor final class AppStore: ObservableObject {
     @Published var workspace: Workspace
     @Published var detailID: UUID?
+    @Published private(set) var navigation = TaskNavigationHistory()
+    @Published var swipeProgress = 0.0
+    @Published var swipeDirection = 1
+    private var swipeGesture = TaskSwipeGesture()
+    private var swipeDismiss: DispatchWorkItem?
     @Published var selectedTaskID: UUID?
     @Published var isSearching = false
     @Published var query = ""
@@ -111,6 +116,8 @@ enum Prompt {
         }
     }
     func selectTab(_ id: UUID) {
+        navigation.reset()
+        cancelSwipe()
         change { $0.selectedTabID = id }
         isSearching = false
         query = ""
@@ -155,21 +162,73 @@ enum Prompt {
         }
     }
     func openTask(_ id: UUID) {
-        selectedTaskID = id
-        detailID = id
+        cancelSwipe()
+        guard tab.tasks.contains(where: { $0.id == id }) else { return }
+        navigation.visit(id)
+        applyNavigation()
+    }
+    private func applyNavigation() {
+        detailID = navigation.current
+        if let detailID { selectedTaskID = detailID }
         subtaskDraft = ""
         editingNotes = false
         isSearching = false
+        focusEntry()
     }
     func back() {
         if isSearching { isSearching = false; query = ""; focusEntry(); return }
-        if let parentID = detail?.parentID { openTask(parentID) }
-        else { detailID = nil; editingNotes = false; focusEntry() }
+        navigation.removeMissing(validIDs: Set(tab.tasks.map(\.id)))
+        guard navigation.canGoBack else { return }
+        navigation.back()
+        applyNavigation()
+    }
+    func forward() {
+        navigation.removeMissing(validIDs: Set(tab.tasks.map(\.id)))
+        guard navigation.canGoForward else { return }
+        navigation.forward()
+        applyNavigation()
+    }
+    func cancelSwipe() {
+        swipeDismiss?.cancel()
+        swipeGesture.reset()
+        swipeProgress = 0
+    }
+    func handleScroll(_ event: NSEvent) -> Bool {
+        guard event.hasPreciseScrollingDeltas else { return false }
+        // Momentum must never cause another navigation after fingers lift.
+        if !event.momentumPhase.isEmpty { return swipeGesture.direction != 0 }
+        guard !event.phase.isEmpty else { return false }
+        if event.phase.contains(.began) || event.phase.contains(.mayBegin) { cancelSwipe() }
+        guard prompt == nil, appearanceTabID == nil, !showHelp, !isSearching else { cancelSwipe(); return false }
+        if event.phase.contains(.ended) || event.phase.contains(.cancelled) {
+            let consumed = swipeGesture.direction != 0
+            if !swipeGesture.committed {
+                withAnimation(.spring(response: 0.23, dampingFraction: 0.85)) { swipeProgress = 0 }
+            }
+            return consumed
+        }
+        let alreadyCommitted = swipeGesture.committed
+        let consumed = swipeGesture.update(dx: event.scrollingDeltaX, dy: event.scrollingDeltaY,
+                                           canBack: navigation.canGoBack, canForward: navigation.canGoForward)
+        guard consumed, !alreadyCommitted else { return consumed }
+        swipeDirection = swipeGesture.direction
+        swipeProgress = swipeGesture.progress
+        if swipeGesture.committed {
+            if swipeDirection == 1 { back() } else { forward() }
+            NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+            let dismiss = DispatchWorkItem { [weak self] in
+                withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) { self?.swipeProgress = 0 }
+            }
+            swipeDismiss = dismiss
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12, execute: dismiss)
+        }
+        return true
     }
     func openSelected() {
         if let id = selectedTaskID ?? visibleRows.first?.task.id { openTask(id) }
     }
     func beginSearch() {
+        cancelSwipe()
         appearanceTabID = nil
         isSearching = true
         query = ""
@@ -183,6 +242,7 @@ enum Prompt {
         if let id = result.taskID { openTask(id) }
     }
     func beginPrompt(_ value: Prompt) {
+        cancelSwipe()
         appearanceTabID = nil
         // End any editor before covering it. A modal must never allow typing into
         // the task title/notes behind it during SwiftUI's focus handoff.
@@ -231,6 +291,7 @@ enum Prompt {
             undoWorkspace = workspace
             change { $0.deleteTab(id: id) }
             detailID = nil
+            navigation.reset()
             selectedTaskID = nil
         case .deleteTask(let id):
             undoWorkspace = workspace
@@ -240,6 +301,8 @@ enum Prompt {
             change { $0.deleteTask(id: id, tabID: tabID) }
             if let detailID, deleted.contains(detailID) { self.detailID = parent }
             if let selectedTaskID, deleted.contains(selectedTaskID) { self.selectedTaskID = nil }
+            navigation.removeMissing(validIDs: Set(tab.tasks.map(\.id)))
+            if navigation.current != detailID { navigation.visit(detailID) }
         }
         prompt = nil
         if case .newTab = value {
@@ -264,6 +327,8 @@ enum Prompt {
         }
         workspace.selectedTabID = previous.selectedTabID
         undoWorkspace = nil
+        navigation.reset()
+        cancelSwipe()
         detailID = nil
         selectedTaskID = nil
         scheduleSave()
@@ -300,7 +365,7 @@ enum Prompt {
         }
         if flags == [.command, .option] {
             if event.keyCode == 123 { back(); return true }
-            if event.keyCode == 124 { if detailID == nil { openSelected() }; return true }
+            if event.keyCode == 124 { forward(); return true }
         }
         if flags == .command {
             switch key {

@@ -17,6 +17,7 @@ final class TaskPanel: NSPanel {
     private var hotkey: EventHotKeyRef?
     private var eventHandler: EventHandlerRef?
     private var keyMonitor: Any?
+    private var scrollMonitor: Any?
     private var toggleSamples: [Double] = []
     private var diagnosticsURL: URL?
     private var lastToggleAction = "launch"
@@ -46,6 +47,12 @@ final class TaskPanel: NSPanel {
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self, self.panel.isKeyWindow else { return event }
             return self.store.handleKey(event) ? nil : event
+        }
+        scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
+            guard let self, event.window === self.panel, self.panel.isVisible else { return event }
+            // Leave the horizontal tab strip's own scrolling alone.
+            guard event.locationInWindow.y < self.panel.frame.height - 110 else { return event }
+            return self.store.handleScroll(event) ? nil : event
         }
         NotificationCenter.default.addObserver(self, selector: #selector(screenChanged), name: NSApplication.didChangeScreenParametersNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(writeDiagnostics), name: NSWindow.didChangeOcclusionStateNotification, object: panel)
@@ -184,6 +191,7 @@ final class TaskPanel: NSPanel {
 
     private func hide() {
         let start = ProcessInfo.processInfo.systemUptime
+        store.cancelSwipe()
         store.appearanceTabID = nil
         if NSColorPanel.sharedColorPanelExists { NSColorPanel.shared.orderOut(nil) }
         store.flush()
@@ -213,6 +221,7 @@ final class TaskPanel: NSPanel {
         if let hotkey { UnregisterEventHotKey(hotkey) }
         if let eventHandler { RemoveEventHandler(eventHandler) }
         if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
+        if let scrollMonitor { NSEvent.removeMonitor(scrollMonitor) }
         NotificationCenter.default.removeObserver(self)
         NSWorkspace.shared.notificationCenter.removeObserver(self)
     }

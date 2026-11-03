@@ -68,3 +68,7 @@ Replaced refractive glass with an active behind-window HUD blur and a 30% black 
 ## Compact rows and nested disclosure
 
 Reduced task-row padding and detail section gaps, moved subtask counts inline, and centered the detail title beside its completion circle. Native UI checks with a three-level test tree verified independent nested collapse, full parent collapse, and preservation of child collapse state when the parent is reopened. Inspected screenshots of the compact main list and detail title/subtask layout. Release build succeeds.
+
+## Task history and swipe navigation
+
+All 12 core tests pass, including history round trips, forward-branch replacement, deleted-entry removal, swipe reversal, vertical direction locking, unavailable directions, and single commit per gesture. Release build succeeds. Native keyboard checks exercised list → task → subtask → back → forward → back → back to list through the same navigation methods used by swipes. The gesture handler only accepts precise phased scroll input, excludes momentum from navigation, and leaves the tab strip alone. A clipped circular edge indicator tracks progress and springs away after completion/cancellation. Physical two-finger feel and haptic feedback require hands-on trackpad validation; desktop automation does not reproduce that input reliably.

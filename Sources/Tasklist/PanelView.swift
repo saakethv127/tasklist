@@ -29,6 +29,8 @@ struct PanelView: View {
             .allowsHitTesting(store.prompt == nil)
             .accessibilityHidden(store.prompt != nil)
             if store.prompt != nil { PromptView(store: store) }
+            swipeIndicator
+
         }
         .frame(width: 400, height: 560)
         .preferredColorScheme(.dark)
@@ -48,6 +50,27 @@ struct PanelView: View {
         .onChange(of: store.appearanceTabID) { _, id in
             if id == nil { store.flush() }
         }
+    }
+
+    private var swipeIndicator: some View {
+        let progress = store.swipeProgress
+        let back = store.swipeDirection == 1
+        return ZStack {
+            Circle().fill(Color(white: 0.16))
+            Circle().trim(from: 0, to: progress)
+                .stroke(Color.white.opacity(0.85), style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                .rotationEffect(.degrees(-90)).padding(5)
+            Image(systemName: back ? "arrow.left" : "arrow.right")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.5 + 0.5 * progress))
+                .offset(x: back ? 10 : -10)
+        }
+        .frame(width: 76, height: 76)
+        .shadow(color: .black.opacity(0.25), radius: 7)
+        .offset(x: (back ? -1 : 1) * (76 - 38 * progress))
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: back ? .leading : .trailing)
+        .opacity(progress > 0 ? 1 : 0)
+        .clipped().allowsHitTesting(false).accessibilityHidden(true)
     }
 
     private var header: some View {
@@ -225,7 +248,7 @@ struct PanelView: View {
         VStack(spacing: 0) {
             HStack {
                 Button(action: store.back) {
-                    Label(task.parentID == nil ? "All tasks" : "Parent task", systemImage: "chevron.left")
+                    Label("Back", systemImage: "chevron.left")
                         .font(.system(size: 11, weight: .medium))
                 }.buttonStyle(.plain).foregroundStyle(.secondary).help("Back · ⌘⌥←")
                 Spacer()
@@ -371,10 +394,10 @@ struct PanelView: View {
     private var helpView: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Make yourself at home.").font(.system(size: 16, weight: .semibold, design: .rounded))
-            ForEach([("Show / hide", "⌘⌥;"), ("Search everything", "⌘K"), ("Previous / next tab", "⌘← / →"), ("New tab", "⌘T"), ("Tab appearance", "⌘⇧A"), ("Delete current tab", "⌘W"), ("List / task detail", "⌘⌥← / →"), ("Focus quick add", "⌘N"), ("Select / open task", "↑↓ / ↵"), ("Delete selected task", "⌘⌫"), ("Confirm / cancel", "↵ / esc")], id: \.0) { label, keys in
+            ForEach([("Show / hide", "⌘⌥;"), ("Search everything", "⌘K"), ("Previous / next tab", "⌘← / →"), ("New tab", "⌘T"), ("Tab appearance", "⌘⇧A"), ("Delete current tab", "⌘W"), ("History back / forward", "⌘⌥← / →"), ("Focus quick add", "⌘N"), ("Select / open task", "↑↓ / ↵"), ("Delete selected task", "⌘⌫"), ("Confirm / cancel", "↵ / esc")], id: \.0) { label, keys in
                 HStack { Text(label); Spacer(minLength: 20); Text(keys).foregroundStyle(.secondary) }.font(.system(size: 12))
             }
-            Text("Right-click a task or tab for more actions.\nDescriptions support Markdown links, emphasis, lists, and headings.")
+            Text("Swipe right to go back; left to go forward.\nRight-click a task or tab for more actions.\nDescriptions support Markdown links, emphasis, lists, and headings.")
                 .font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }.padding(22).frame(width: 320)
     }

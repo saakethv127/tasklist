@@ -186,3 +186,60 @@ public struct WorkspaceStorage {
         try data.write(to: url, options: [.atomic])
     }
 }
+
+// Session-only task navigation; nil represents the task list.
+public struct TaskNavigationHistory {
+    public private(set) var entries: [UUID?] = [nil]
+    public private(set) var index = 0
+    public init() {}
+    public var current: UUID? { entries[index] }
+    public var canGoBack: Bool { index > 0 }
+    public var canGoForward: Bool { index + 1 < entries.count }
+    public mutating func reset(to id: UUID? = nil) { entries = id.map { [nil, $0] } ?? [nil]; index = entries.count - 1 }
+    public mutating func visit(_ id: UUID?) {
+        guard id != current else { return }
+        entries = Array(entries.prefix(index + 1))
+        entries.append(id)
+        index += 1
+    }
+    public mutating func back() { if canGoBack { index -= 1 } }
+    public mutating func forward() { if canGoForward { index += 1 } }
+    public mutating func removeMissing(validIDs: Set<UUID>) {
+        let old = entries
+        let oldIndex = index
+        entries = []
+        index = 0
+        for (i, id) in old.enumerated() where id == nil || validIDs.contains(id!) {
+            if entries.last != .some(id) { entries.append(id) }
+            if i <= oldIndex { index = max(0, entries.count - 1) }
+        }
+        if entries.isEmpty { entries = [nil]; index = 0 }
+    }
+}
+
+// Direction locks after a small dead zone. A gesture commits once at full fill;
+// reversals below the threshold retract it, and vertical scrolling is untouched.
+public struct TaskSwipeGesture {
+    public private(set) var direction = 0 // +1 back, -1 forward
+    public private(set) var progress = 0.0
+    public private(set) var committed = false
+    private var x = 0.0
+    private var y = 0.0
+    private var rejected = false
+    public init() {}
+    public mutating func reset() { self = Self() }
+    public mutating func update(dx: Double, dy: Double, canBack: Bool, canForward: Bool) -> Bool {
+        guard !rejected else { return false }
+        guard !committed else { return true }
+        x += dx; y += dy
+        if direction == 0 {
+            guard max(abs(x), abs(y)) >= 8 else { return false }
+            guard abs(x) > abs(y) * 1.35 else { rejected = true; return false }
+            direction = x > 0 ? 1 : -1
+            guard direction == 1 ? canBack : canForward else { direction = 0; rejected = true; return false }
+        }
+        progress = min(1, max(0, x * Double(direction) / 90))
+        if progress >= 1 { committed = true }
+        return true
+    }
+}
