@@ -239,6 +239,12 @@ enum Prompt {
         if prompt != nil {
             if event.keyCode == 53 { prompt = nil; focusEntry(); return true }
             if event.keyCode == 36 || event.keyCode == 76 { confirmPrompt(); return true }
+            if !isDeletePrompt, !(NSApp.keyWindow?.firstResponder is NSTextView),
+               flags.isSubset(of: .shift), let text = event.characters, !text.isEmpty,
+               text.unicodeScalars.allSatisfy({ !CharacterSet.controlCharacters.contains($0) }) {
+                promptText += text
+                return true
+            }
             // Prevent shortcuts that would change the target underneath the confirmation.
             return flags.contains(.command) && ["k", "t", "w"].contains(key) || [123,124,125,126].contains(event.keyCode) && flags.contains(.command)
         }

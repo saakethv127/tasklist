@@ -375,7 +375,6 @@ struct PanelView: View {
 
 private struct PromptView: View {
     @ObservedObject var store: AppStore
-    @FocusState private var focused: Bool
     var body: some View {
         ZStack {
             Color.black.opacity(0.12)
@@ -385,7 +384,10 @@ private struct PromptView: View {
                 Text(store.promptTitle).font(.system(size: 19, weight: .semibold, design: .rounded))
                 Text(store.promptMessage).font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 if !store.isDeletePrompt {
-                    TextField("Tab name", text: $store.promptText).textFieldStyle(.roundedBorder).focused($focused).accessibilityLabel("Tab name")
+                    PromptTextField(text: $store.promptText, selectAll: {
+                        if case .renameTab = store.prompt { return true }
+                        return false
+                    }()).frame(height: 24)
                 }
                 HStack {
                     Button("Cancel  esc") { store.prompt = nil; store.focusEntry() }.buttonStyle(.bordered)
@@ -398,7 +400,46 @@ private struct PromptView: View {
                 .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20))
                 .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(.white.opacity(0.3), lineWidth: 0.5))
                 .shadow(color: .black.opacity(0.12), radius: 20, y: 8)
-        }.onAppear { DispatchQueue.main.async { focused = !store.isDeletePrompt } }
+        }
+    }
+}
+
+// Focus synchronously when the field joins the window. Deferring SwiftUI focus
+// can select or discard the first character when someone types immediately.
+private struct PromptTextField: NSViewRepresentable {
+    @Binding var text: String
+    var selectAll: Bool
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+    func makeNSView(context: Context) -> ImmediateFocusField {
+        let field = ImmediateFocusField(string: text)
+        field.selectAllInitially = selectAll
+        field.placeholderString = "Tab name"
+        field.setAccessibilityLabel("Tab name")
+        field.bezelStyle = .roundedBezel
+        field.font = .systemFont(ofSize: 13)
+        field.delegate = context.coordinator
+        return field
+    }
+    func updateNSView(_ field: ImmediateFocusField, context: Context) {
+        context.coordinator.parent = self
+        if field.stringValue != text { field.stringValue = text }
+    }
+    final class Coordinator: NSObject, NSTextFieldDelegate {
+        var parent: PromptTextField
+        init(_ parent: PromptTextField) { self.parent = parent }
+        func controlTextDidChange(_ notification: Notification) {
+            if let field = notification.object as? NSTextField { parent.text = field.stringValue }
+        }
+    }
+    final class ImmediateFocusField: NSTextField {
+        var selectAllInitially = false
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            guard let window else { return }
+            window.makeFirstResponder(self)
+            let length = (stringValue as NSString).length
+            currentEditor()?.selectedRange = selectAllInitially ? NSRange(location: 0, length: length) : NSRange(location: length, length: 0)
+        }
     }
 }
 

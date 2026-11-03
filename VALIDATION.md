@@ -20,7 +20,7 @@ An isolated `/tmp/tasklist-qa.json` file was used; test content is not included 
 
 - Quick-add accepts typing and Return, saves, and persists through app restarts.
 - Command-K focuses search immediately. Filtered rows display the matching task/subtask and its tab/parent context. Clicking a subtask result opens the correct detail view in its owning tab.
-- Command-T focuses a new-tab dialog. Typing a name and pressing Return creates and selects an independent list.
+- Command-T focuses a new-tab dialog. Typing a name and pressing Return creates and selects an independent list. Immediate typing after Command-T was retested in the installed app after replacing deferred dialog focus with a native text field.
 - Command-Left/Right changes tabs. Command-Option-Left/Right moves between the task list and details.
 - Task details show subtasks, editable titles, and descriptions. The editor receives focus when opened.
 - Markdown headings, bold text, bullets, and hyperlinks render. Clicking a Markdown hyperlink opened the requested GitHub repository in the browser.
@@ -30,7 +30,7 @@ An isolated `/tmp/tasklist-qa.json` file was used; test content is not included 
 - The fixed 400 × 560-point panel appears at the display's lower-left with a 16-point inset from the usable screen bounds. The native glass surface and rounded edges were inspected in list, detail, search, and modal states.
 - The panel was verified visible above fullscreen Chrome (`isOnActiveSpace` and visible occlusion state), and on the regular desktop after exiting fullscreen. On hide, Chrome remained the frontmost app, the panel became non-key and invisible, and Chrome's desktop was preserved.
 
-The OS-global Command-Option-semicolon shortcut registers successfully without Accessibility permissions. A physical-keyboard cross-desktop confirmation is requested separately: the computer automation interface sends keys to individual apps and did not trigger Carbon's system hotkey routing. App-local shortcuts and the same panel show/hide implementation were exercised through the UI.
+The OS-global Command-Option-semicolon shortcut registers successfully without Accessibility permissions. The user confirmed with the physical keyboard that it opens and hides correctly from other apps and across desktop Spaces, without switching desktops. App-local shortcuts and panel show/hide behavior were also exercised through the UI.
 
 ## Performance
 
