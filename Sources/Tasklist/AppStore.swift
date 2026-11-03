@@ -230,7 +230,11 @@ enum Prompt {
             if let selectedTaskID, deleted.contains(selectedTaskID) { self.selectedTaskID = nil }
         }
         prompt = nil
-        focusEntry()
+        if case .newTab = value {
+            customizeTab(workspace.selectedTabID)
+        } else {
+            focusEntry()
+        }
         flush()
     }
     func undoDelete() {
@@ -276,6 +280,11 @@ enum Prompt {
             }
             // Prevent shortcuts that would change the target underneath the confirmation.
             return flags.contains(.command) && ["k", "t", "w"].contains(key) || [123,124,125,126].contains(event.keyCode) && flags.contains(.command)
+        }
+        if flags == [.command, .shift], key == "a" {
+            if appearanceTabID != nil { appearanceTabID = nil; focusEntry() }
+            else { customizeTab(tab.id) }
+            return true
         }
         if flags == [.command, .option] {
             if event.keyCode == 123 { back(); return true }

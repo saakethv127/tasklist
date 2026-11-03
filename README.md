@@ -4,7 +4,7 @@ A small, local macOS task list that stays out of your way. Press **⌘⌥;** to 
 
 Native SwiftUI + AppKit. No web view, server, account, analytics, dependencies, or background polling. macOS 26+ uses Apple's Liquid Glass; macOS 14–15 uses native translucent material.
 
-The pane uses a dark, neutral black-and-white appearance at 95% opacity. Each tab can have its own accent color and SVG icon.
+The pane uses a dark, neutral black-and-white appearance with a flat translucent tint over a blurred backdrop. Only the background is translucent, keeping app text crisp without leaking sharp desktop text through the window. Each tab can have its own accent color and SVG icon.
 
 ## Build and run
 
@@ -28,7 +28,7 @@ The menu-bar checklist icon also toggles the panel. Right-click it to quit. The 
 - Click a task to edit its title, description, and subtasks. Subtasks are indented with a branching arrow and can have their own subtasks and descriptions. Completing a parent leaves each child's completion state independent.
 - Descriptions support `**bold**`, `*italic*`, `[links](https://example.com)`, inline code, headings, and simple lists. Use **Edit / Done** to switch between Markdown and its rendered preview.
 - Each tab has an independent list. Right-click a tab to rename or delete it. The ellipsis menu also contains these actions.
-- Click the palette button beside the tabs, choose **Tab appearance…** in the ellipsis menu, or right-click any tab → **Appearance…**. Choose a preset or **Custom color…** for the standard macOS color panel, plus a searchable collection of 2,019 bundled Lucide SVG icons. Search by name, keyword, or category; press Return to select the first result. Changes save automatically per tab and also identify tabs in global search. The header stays neutral.
+- New tabs open the appearance picker after you enter a name. Press **⌘⇧A**, click the palette button beside the tabs, choose **Tab appearance…** in the ellipsis menu, or right-click any tab → **Appearance…**. Choose a preset or **Custom color…** for the standard macOS color panel, plus a searchable collection of 2,019 bundled Lucide SVG icons. Search by name, keyword, or category; press Return to select the first result. Changes save automatically per tab and also identify tabs in global search. The header stays neutral.
 - Search covers tab names, task and subtask titles, descriptions, and parent context, including completed tasks.
 - Every task, subtask, and tab deletion requires confirmation. Deleting a parent removes its descendants; the prompt tells you how many. **Undo last deletion** in the ellipsis menu restores removed items without discarding subsequent edits. Undo is available for the current app session.
 - Clicking another app leaves the panel visible. The hotkey or minus button hides it. Escape closes a prompt, search, or task detail first, then hides the list.
@@ -41,7 +41,8 @@ The menu-bar checklist icon also toggles the panel. Right-click it to quit. The 
 | ⌘K | Search across all tabs, tasks, subtasks, and notes |
 | ↑ / ↓, Return | Select / open a search result or task |
 | ⌘← / ⌘→ | Previous / next tab, wrapping around |
-| ⌘T | New tab |
+| ⌘T | New tab, then choose color and icon |
+| ⌘⇧A | Open / close current tab appearance |
 | ⌘W | Confirm deletion of the current tab |
 | ⌘⌥← | Back to parent task or tab list |
 | ⌘⌥→ | Open the selected task from the list |

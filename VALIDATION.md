@@ -60,3 +60,7 @@ Runtime verification was on the machine above. The macOS 14–15 material fallba
 ## Full Lucide collection
 
 Bundled 2,019 Lucide SVG icons with local name, tag, and category search. All 10 core tests pass, including catalog packaging, stable persisted identifiers, keyword matching, and legacy appearance compatibility. 100 searches across the catalog took 0.343 seconds in the test build. The release app occupies 8.8 MB on disk. Native UI checks confirmed the full catalog count, `airplane` matching Plane, Return selection, selected icon rendering, and the empty-result state. The upstream license and pinned source manifest ship inside the app.
+
+## Flat frosted backdrop and appearance access
+
+Replaced refractive glass with an active behind-window HUD blur and a 30% black tint. The content sits outside the visual-effect view to avoid vibrancy. Window alpha is now 1 so unblurred background text cannot leak through compositor transparency. Release build succeeds. Native UI checks confirmed that naming a new tab opens its color/icon picker, Escape dismisses it, and Command-Shift-A reopens it for the current tab. Visually inspected the flat backdrop and rounded clipping.

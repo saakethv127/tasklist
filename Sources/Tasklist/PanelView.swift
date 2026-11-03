@@ -58,7 +58,7 @@ struct PanelView: View {
             iconButton("magnifyingglass", "Search everything · ⌘K") { store.beginSearch() }
             Menu {
                 Button("New tab…", action: { store.beginPrompt(.newTab) })
-                Button("Tab appearance…", action: { store.customizeTab(store.tab.id) })
+                Button("Tab appearance…  ⌘⇧A", action: { store.customizeTab(store.tab.id) })
                 Button("Rename tab…", action: { store.beginPrompt(.renameTab(store.tab.id)) })
                 Button("Delete tab…", action: { store.beginPrompt(.deleteTab(store.tab.id)) })
                 Divider()
@@ -111,7 +111,7 @@ struct PanelView: View {
                 .onChange(of: store.workspace.selectedTabID) { _, id in withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(id) } }
             }
             iconButton("plus", "New tab · ⌘T") { store.beginPrompt(.newTab) }
-            iconButton("paintpalette", "Tab color and icon") { store.customizeTab(store.tab.id) }
+            iconButton("paintpalette", "Tab color and icon · ⌘⇧A") { store.customizeTab(store.tab.id) }
         }
         .padding(.bottom, 13)
     }
@@ -350,7 +350,7 @@ struct PanelView: View {
     private var helpView: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Make yourself at home.").font(.system(size: 16, weight: .semibold, design: .rounded))
-            ForEach([("Show / hide", "⌘⌥;"), ("Search everything", "⌘K"), ("Previous / next tab", "⌘← / →"), ("New tab", "⌘T"), ("Delete current tab", "⌘W"), ("List / task detail", "⌘⌥← / →"), ("Focus quick add", "⌘N"), ("Select / open task", "↑↓ / ↵"), ("Delete selected task", "⌘⌫"), ("Confirm / cancel", "↵ / esc")], id: \.0) { label, keys in
+            ForEach([("Show / hide", "⌘⌥;"), ("Search everything", "⌘K"), ("Previous / next tab", "⌘← / →"), ("New tab", "⌘T"), ("Tab appearance", "⌘⇧A"), ("Delete current tab", "⌘W"), ("List / task detail", "⌘⌥← / →"), ("Focus quick add", "⌘N"), ("Select / open task", "↑↓ / ↵"), ("Delete selected task", "⌘⌫"), ("Confirm / cancel", "↵ / esc")], id: \.0) { label, keys in
                 HStack { Text(label); Spacer(minLength: 20); Text(keys).foregroundStyle(.secondary) }.font(.system(size: 12))
             }
             Text("Right-click a task or tab for more actions.\nDescriptions support Markdown links, emphasis, lists, and headings.")
@@ -374,7 +374,7 @@ struct PanelView: View {
         focusedField = nil
         // Wait until SwiftUI has installed the field for the new navigation state.
         DispatchQueue.main.async {
-            guard store.prompt == nil else { return }
+            guard store.prompt == nil, store.appearanceTabID == nil else { return }
             focusedField = store.isSearching ? .search : (store.detailID == nil ? .add : .subtask)
         }
     }

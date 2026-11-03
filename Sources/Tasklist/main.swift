@@ -65,30 +65,36 @@ final class TaskPanel: NSPanel {
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.appearance = NSAppearance(named: .darkAqua)
-        panel.alphaValue = 0.95
+        // Keep the window opaque at the compositor level so sharp background text
+        // cannot leak through the blur. Translucency belongs to the backdrop only.
+        panel.alphaValue = 1
         panel.hasShadow = true
         panel.isMovable = false
         panel.animationBehavior = .none
         let host = NSHostingView(rootView: PanelView(store: store))
         host.frame = NSRect(x: 0, y: 0, width: 400, height: 560)
         host.autoresizingMask = [.width, .height]
-        if #available(macOS 26.0, *) {
-            let glass = NSGlassEffectView(frame: host.frame)
-            glass.style = .regular
-            glass.cornerRadius = 24
-            glass.contentView = host
-            panel.contentView = glass
-        } else {
-            let effect = NSVisualEffectView(frame: host.frame)
-            effect.material = .hudWindow
-            effect.blendingMode = .behindWindow
-            effect.state = .active
-            effect.wantsLayer = true
-            effect.layer?.cornerRadius = 24
-            effect.layer?.masksToBounds = true
-            effect.addSubview(host)
-            panel.contentView = effect
-        }
+        let backdrop = NSView(frame: host.frame)
+        backdrop.wantsLayer = true
+        backdrop.layer?.cornerRadius = 24
+        backdrop.layer?.masksToBounds = true
+
+        let blur = NSVisualEffectView(frame: host.frame)
+        blur.material = .hudWindow
+        blur.blendingMode = .behindWindow
+        blur.state = .active
+        blur.autoresizingMask = [.width, .height]
+        backdrop.addSubview(blur)
+
+        // A flat tint over the system blur: no refractive glass highlights or
+        // vibrant content. The hosting view is a sibling, outside the effect.
+        let tint = NSView(frame: host.frame)
+        tint.wantsLayer = true
+        tint.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.30).cgColor
+        tint.autoresizingMask = [.width, .height]
+        backdrop.addSubview(tint)
+        backdrop.addSubview(host)
+        panel.contentView = backdrop
     }
 
     private func setupMainMenu() {
