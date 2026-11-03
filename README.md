@@ -83,8 +83,10 @@ Task rows use compact spacing in lists and details. Click the chevron to the lef
 
 Two-finger horizontal swipes over the task content navigate session history: swipe right for back, left for forward. An edge semicircle and arrow fill with the gesture; reaching the threshold navigates once with a light haptic tick. Short gestures retract, and vertical scrolling stays available. History resets when switching tabs; opening another task after going back replaces the forward branch. The tab strip keeps its own horizontal scrolling.
 
-Drag a task’s left-hand grip onto a sibling to reorder it, in either the main list or a task’s subtask list. Order saves automatically. Only top-level tasks have a separate move icon (or **Move** in detail). Moving one transfers all its descendants to the destination tab and opens it there. Subtasks cannot move independently between tabs.
+Drag anywhere on a task’s highlighted surface to reorder it among siblings, in either the main list or a task’s subtask list. Order saves automatically. Only top-level tasks have a separate move icon (or **Move** in detail). Moving one transfers all its descendants to the destination tab and opens it there. Subtasks cannot move independently between tabs.
 
 During reordering, the grabbed row follows the pointer and sibling rows slide aside to preview its new position. Expanded descendants move with their parent. Release to save the order. Task and subtask rows highlight on hover; the separate move control uses the same row height for its own hover highlight.
 
 Drag a tab directly by its name to reorder tabs. Other tabs slide aside during the drag; releasing saves the new order without changing the selected tab. A normal click still switches tabs.
+
+Task rows have no separate drag handle or detail chevron. Click the title/surface to open details; drag the row to reorder. Parent disclosure arrows still expand or collapse subtasks.

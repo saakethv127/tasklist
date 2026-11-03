@@ -90,3 +90,7 @@ Reordering now snapshots visible sibling geometry at drag start, lifts the grabb
 ## Tab dragging
 
 All 15 tests pass, including tab reorder in both directions, preservation of selected tab and task contents, invalid-ID no-op, and serialization. Native UI drag from the selected tab name reordered the tabs; saved JSON confirmed the new order. A normal tab click afterward still switched tabs correctly. The preview uses horizontal sibling displacement with no extra drag handle.
+
+## Task surface polish
+
+Moved the drag gesture from the removed grip to the full highlighted task surface, with a small motion threshold to preserve ordinary clicks. Removed detail-entry chevrons while retaining parent disclosure controls. Native UI checks verified title-surface dragging, independent completion toggles, and clicking into detail. Sibling-only reorder logic is unchanged.

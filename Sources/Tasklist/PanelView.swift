@@ -272,26 +272,6 @@ struct PanelView: View {
         let collapsed = store.collapsedTaskIDs.contains(task.id)
         return HStack(spacing: 5) {
             HStack(alignment: .center, spacing: 6) {
-                Image(systemName: "line.3.horizontal")
-                    .font(.system(size: 9)).foregroundStyle(.tertiary)
-                    .frame(width: 16, height: 26).contentShape(Rectangle())
-                    .help("Drag to reorder among sibling tasks")
-                    .accessibilityLabel("Drag to reorder \(task.title)")
-                    .gesture(DragGesture(minimumDistance: 4, coordinateSpace: .named("taskReorder"))
-                        .onChanged { value in
-                            if store.draggedTaskID != task.id { beginTaskDrag(task) }
-                            dragTranslation = value.translation.height
-                            updateTaskDrag(task)
-                        }
-                        .onEnded { _ in
-                            let target = store.dropTargetID
-                            withAnimation(.spring(response: 0.25, dampingFraction: 0.86)) {
-                                if let target { store.reorderTask(task.id, relativeTo: target) }
-                                store.draggedTaskID = nil
-                                store.dropTargetID = nil
-                                dragTranslation = 0
-                            }
-                        })
 
                 if showsDisclosure {
                     if !children.isEmpty {
@@ -327,12 +307,28 @@ struct PanelView: View {
                         }
                         Spacer(minLength: 2)
                         if !task.notes.isEmpty { Image(systemName: "text.alignleft").font(.system(size: 10)).foregroundStyle(.tertiary) }
-                        Image(systemName: "chevron.right").font(.system(size: 9, weight: .semibold)).foregroundStyle(.tertiary)
                     }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
                 }.buttonStyle(.plain).accessibilityLabel("Open \(task.parentID == nil ? "task" : "subtask"): \(task.title)")
+                    .help("Click to open details; drag to reorder among siblings")
             }
             .padding(.vertical, 3).padding(.horizontal, 6)
             .padding(.leading, CGFloat(min(depth, 3)) * 12)
+            .contentShape(Rectangle())
+            .highPriorityGesture(DragGesture(minimumDistance: 6, coordinateSpace: .named("taskReorder"))
+                .onChanged { value in
+                    if store.draggedTaskID != task.id { beginTaskDrag(task) }
+                    dragTranslation = value.translation.height
+                    updateTaskDrag(task)
+                }
+                .onEnded { _ in
+                    let target = store.dropTargetID
+                    withAnimation(.spring(response: 0.25, dampingFraction: 0.86)) {
+                        if let target { store.reorderTask(task.id, relativeTo: target) }
+                        store.draggedTaskID = nil
+                        store.dropTargetID = nil
+                        dragTranslation = 0
+                    }
+                })
             .background(store.selectedTaskID == task.id ? accent.opacity(0.10) : Color.primary.opacity(hoveredTaskID == task.id ? 0.075 : 0), in: RoundedRectangle(cornerRadius: 10))
             .onHover { hovering in
                 if hovering { hoveredTaskID = task.id }
