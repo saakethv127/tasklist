@@ -125,3 +125,30 @@ private func unwrap<T>(_ value: T?) throws -> T { try #require(value) }
     #expect(restored.tabs[1].colorHex == "3478D4")
     #expect(restored.tabs[1].iconID == "briefcase")
 }
+
+@Test func lucideCatalogSupportsNamesTagsCategoriesAndStableIDs() throws {
+    #expect(IconCatalog.all.count == 2019)
+    #expect(Set(IconCatalog.all.map(\.id)).count == IconCatalog.all.count)
+    #expect(IconCatalog.search("CLOUD-download").first?.id == "cloud-download")
+    #expect(IconCatalog.search("airplane").contains { $0.id == "plane" })
+    #expect(IconCatalog.search("home").contains { $0.id == "house" })
+    #expect(IconCatalog.search("food beverage").contains { $0.id == "coffee" })
+    #expect(IconCatalog.search("  \n ").count == 2019)
+    #expect(IconCatalog.search("zzzznonexistentzzzz").isEmpty)
+    #expect(IconCatalog.icon(for: "lucide:coffee")?.name == "Coffee")
+    #expect(IconCatalog.icon(for: "lucide:unknown") == nil)
+    #expect(IconCatalog.icon(for: "coffee") == nil) // Legacy SVG ID stays separate.
+    var workspace = Workspace()
+    workspace.tabs[0].iconID = "lucide:plane"
+    let decoded = try JSONDecoder().decode(Workspace.self, from: JSONEncoder().encode(workspace))
+    #expect(IconCatalog.icon(for: decoded.tabs[0].iconID)?.id == "plane")
+}
+
+@Test func iconSearchRemainsFastAcrossTheFullCollection() {
+    _ = IconCatalog.search("warm up")
+    let start = ContinuousClock.now
+    for _ in 0..<100 { #expect(!IconCatalog.search("cloud").isEmpty) }
+    let elapsed = start.duration(to: .now)
+    print("Icon search benchmark: 100 searches across \(IconCatalog.all.count) icons: \(elapsed)")
+    #expect(elapsed < .seconds(2))
+}

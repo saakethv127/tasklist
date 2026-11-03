@@ -490,7 +490,9 @@ private struct TabIcon: View {
     ]
     let id: String?
     var body: some View {
-        let name = "TabIcon-" + (Self.choices.contains(where: { $0.id == id }) ? id! : "list")
+        let name = id?.hasPrefix("lucide:") == true
+            ? IconCatalog.icon(for: id).map { "Lucide-" + $0.id } ?? "TabIcon-list"
+            : "TabIcon-" + (Self.choices.contains(where: { $0.id == id }) ? id! : "list")
         #if SWIFT_PACKAGE
         Image(name, bundle: .module).resizable().scaledToFit().accessibilityHidden(true)
         #else
@@ -502,6 +504,9 @@ private struct TabIcon: View {
 private struct TabAppearanceView: View {
     @ObservedObject var store: AppStore
     let tabID: UUID
+    @State private var iconQuery = ""
+    @State private var results = IconCatalog.all
+    @FocusState private var searchFocused: Bool
     private var tab: TaskTab? { store.workspace.tabs.first { $0.id == tabID } }
     private let palette: [(name: String, hex: String)] = [
         ("Neutral", "BDBDBD"), ("Red", "DC4545"), ("Orange", "C96B24"), ("Gold", "B38A16"),
@@ -543,23 +548,53 @@ private struct TabAppearanceView: View {
                 }
                 Divider()
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("Icon").font(.system(size: 12, weight: .semibold))
-                    LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 6), spacing: 8) {
-                        ForEach(TabIcon.choices, id: \.id) { item in
-                            let selected = (tab.iconID ?? "list") == item.id
-                            Button { store.setTabAppearance(tabID, iconID: item.id) } label: {
-                                TabIcon(id: item.id).frame(width: 18, height: 18)
-                                    .foregroundStyle(selected ? tab.themeColor : .secondary)
-                                    .frame(width: 34, height: 34)
-                                    .background(selected ? tab.themeColor.opacity(0.13) : .primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
-                                    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(selected ? tab.themeColor.opacity(0.3) : .clear, lineWidth: 1))
-                            }.buttonStyle(.plain).help(item.name).accessibilityLabel("\(item.name) tab icon")
-                                .accessibilityAddTraits(selected ? .isSelected : [])
+                    HStack {
+                        Text("Icon").font(.system(size: 12, weight: .semibold))
+                        Spacer()
+                        Text("\(results.count) icons").font(.system(size: 10)).foregroundStyle(.secondary)
+                    }
+                    HStack(spacing: 7) {
+                        Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                        TextField("Search icons…", text: $iconQuery).textFieldStyle(.plain)
+                            .focused($searchFocused).accessibilityLabel("Search tab icons")
+                            .onSubmit { if let first = results.first { store.setTabAppearance(tabID, iconID: first.storedID) } }
+                        if !iconQuery.isEmpty {
+                            Button { iconQuery = ""; searchFocused = true } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
+                                .buttonStyle(.plain).accessibilityLabel("Clear icon search")
+                        }
+                    }.font(.system(size: 12)).padding(9).background(.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
+                    ScrollViewReader { proxy in
+                        ScrollView {
+                            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 6), spacing: 8) {
+                                ForEach(results) { item in
+                                    let selected = tab.iconID == item.storedID
+                                    Button { store.setTabAppearance(tabID, iconID: item.storedID) } label: {
+                                        TabIcon(id: item.storedID).frame(width: 18, height: 18)
+                                            .foregroundStyle(selected ? tab.themeColor : .secondary)
+                                            .frame(width: 34, height: 34)
+                                            .background(selected ? tab.themeColor.opacity(0.13) : .primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
+                                            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(selected ? tab.themeColor.opacity(0.3) : .clear, lineWidth: 1))
+                                    }.buttonStyle(.plain).help(item.name).accessibilityLabel("\(item.name) tab icon")
+                                        .accessibilityAddTraits(selected ? .isSelected : []).id(item.id)
+                                }
+                            }.padding(.trailing, 2)
+                            if results.isEmpty {
+                                Text("No icons found. Try another word.").font(.system(size: 12)).foregroundStyle(.secondary)
+                                    .frame(maxWidth: .infinity).padding(.vertical, 28)
+                            }
+                        }
+                        .frame(height: 160)
+                        .onChange(of: iconQuery) { _, query in
+                            results = IconCatalog.search(query)
+                            if let first = results.first { DispatchQueue.main.async { proxy.scrollTo(first.id, anchor: .top) } }
                         }
                     }
+                    Text("Selected: \(IconCatalog.icon(for: tab.iconID)?.name ?? TabIcon.choices.first(where: { $0.id == (tab.iconID ?? "list") })?.name ?? "List")")
+                        .font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1)
                 }
                 Text("Changes save automatically for this tab.").font(.system(size: 10)).foregroundStyle(.secondary)
             }.padding(18).frame(width: 300).preferredColorScheme(.dark).tint(neutralAccent)
+                .onAppear { DispatchQueue.main.async { searchFocused = true } }
         }
     }
 }

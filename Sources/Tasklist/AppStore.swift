@@ -263,6 +263,8 @@ enum Prompt {
             focusEntry()
             return true
         }
+        // Let the icon search field handle Return and cursor movement itself.
+        if appearanceTabID != nil, !flags.contains(.command) { return false }
         if prompt != nil {
             if event.keyCode == 53 { prompt = nil; focusEntry(); return true }
             if event.keyCode == 36 || event.keyCode == 76 { confirmPrompt(); return true }

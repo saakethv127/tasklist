@@ -56,3 +56,7 @@ The app has no network activity, polling loop, or periodic refresh timer. It sav
 The tab appearance update was built with Xcode and inspected in the running app. Preset color changes and bundled SVG icons render in the tab strip and survive restarting the app. The appearance popover provides 12 color presets, 12 icons, and a custom-color action backed by `NSColorPanel`. The native Apple color palette was opened in the installed app; choosing Blue persisted its custom sRGB value (`0433FF`). The tab was restored to Neutral afterward. The panel now explicitly uses dark appearance with neutral header controls and 95% window opacity.
 
 Runtime verification was on the machine above. The macOS 14–15 material fallback, other keyboard layouts, external-monitor configurations, and Stage Manager were not available in this test session. The hotkey uses the ANSI semicolon key position, documented in the README. The bundle is locally signed for personal use, not notarized for distribution.
+
+## Full Lucide collection
+
+Bundled 2,019 Lucide SVG icons with local name, tag, and category search. All 10 core tests pass, including catalog packaging, stable persisted identifiers, keyword matching, and legacy appearance compatibility. 100 searches across the catalog took 0.343 seconds in the test build. The release app occupies 8.8 MB on disk. Native UI checks confirmed the full catalog count, `airplane` matching Plane, Return selection, selected icon rendering, and the empty-result state. The upstream license and pinned source manifest ship inside the app.
