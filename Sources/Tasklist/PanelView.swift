@@ -10,7 +10,13 @@ struct PanelView: View {
     private enum Field: Hashable { case add, search, subtask, notes }
     @FocusState private var focusedField: Field?
     @State private var hoveredMoveTaskID: UUID?
+    @State private var hoveredTaskID: UUID?
     @State private var taskRowFrames: [UUID: CGRect] = [:]
+    @State private var dragFrames: [UUID: CGRect] = [:]
+    @State private var dragSiblings: [UUID] = []
+    @State private var dragBranches: [UUID: UUID] = [:]
+    @State private var dragTranslation: CGFloat = 0
+    @State private var dragBlockHeight: CGFloat = 0
     private var accent: Color { store.tab.themeColor }
 
     var body: some View {
@@ -212,15 +218,18 @@ struct PanelView: View {
                     .accessibilityLabel("Drag to reorder \(task.title)")
                     .gesture(DragGesture(minimumDistance: 4, coordinateSpace: .named("taskReorder"))
                         .onChanged { value in
-                            store.draggedTaskID = task.id
-                            store.dropTargetID = reorderTarget(for: task, at: value.location)
+                            if store.draggedTaskID != task.id { beginTaskDrag(task) }
+                            dragTranslation = value.translation.height
+                            updateTaskDrag(task)
                         }
-                        .onEnded { value in
-                            if let target = reorderTarget(for: task, at: value.location) {
-                                withAnimation(.easeInOut(duration: 0.16)) { store.reorderTask(task.id, relativeTo: target) }
+                        .onEnded { _ in
+                            let target = store.dropTargetID
+                            withAnimation(.spring(response: 0.25, dampingFraction: 0.86)) {
+                                if let target { store.reorderTask(task.id, relativeTo: target) }
+                                store.draggedTaskID = nil
+                                store.dropTargetID = nil
+                                dragTranslation = 0
                             }
-                            store.draggedTaskID = nil
-                            store.dropTargetID = nil
                         })
 
                 if showsDisclosure {
@@ -263,9 +272,14 @@ struct PanelView: View {
             }
             .padding(.vertical, 3).padding(.horizontal, 6)
             .padding(.leading, CGFloat(min(depth, 3)) * 12)
-            .background(store.selectedTaskID == task.id ? accent.opacity(0.10) : .primary.opacity(depth == 0 ? 0.025 : 0), in: RoundedRectangle(cornerRadius: 10))
-            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(store.dropTargetID == task.id ? accent : .clear, lineWidth: 1.5))
-            .opacity(store.draggedTaskID == task.id ? 0.55 : 1)
+            .background(store.selectedTaskID == task.id ? accent.opacity(0.10) : Color.primary.opacity(hoveredTaskID == task.id ? 0.075 : 0), in: RoundedRectangle(cornerRadius: 10))
+            .onHover { hovering in
+                if hovering { hoveredTaskID = task.id }
+                else if hoveredTaskID == task.id { hoveredTaskID = nil }
+            }
+            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(store.draggedTaskID == task.id ? accent.opacity(0.65) : .clear, lineWidth: 1))
+            .background(store.draggedTaskID == task.id ? Color(white: 0.19) : .clear, in: RoundedRectangle(cornerRadius: 10))
+            .shadow(color: .black.opacity(store.draggedTaskID == task.id ? 0.3 : 0), radius: 8, y: 3)
             .background(GeometryReader { geometry in
                 Color.clear.preference(key: TaskRowFrames.self, value: [task.id: geometry.frame(in: .named("taskReorder"))])
             })
@@ -281,14 +295,56 @@ struct PanelView: View {
             }
             if task.parentID == nil { moveTaskMenu(task, compact: true) }
         }
+        .offset(y: taskDragOffset(task.id))
+        .zIndex(isLiftedTask(task.id) ? 1 : 0)
+        .animation(isLiftedTask(task.id) ? nil : .spring(response: 0.24, dampingFraction: 0.86), value: store.dropTargetID)
     }
 
+    private func beginTaskDrag(_ task: TaskItem) {
+        dragFrames = taskRowFrames
+        dragSiblings = store.tab.children(of: task.parentID).map(\.id).filter { dragFrames[$0] != nil }
+        dragBranches = [:]
+        for sibling in dragSiblings {
+            for member in store.tab.descendants(of: sibling).union([sibling]) { dragBranches[member] = sibling }
+        }
+        let frames = dragFrames.filter { dragBranches[$0.key] == task.id }.map(\.value)
+        dragBlockHeight = (frames.map(\.maxY).max() ?? 0) - (frames.map(\.minY).min() ?? 0) + 2
+        dragTranslation = 0
+        store.dropTargetID = nil
+        store.draggedTaskID = task.id
+    }
 
-    private func reorderTarget(for task: TaskItem, at point: CGPoint) -> UUID? {
-        store.tab.tasks.first { candidate in
-            candidate.id != task.id && candidate.parentID == task.parentID &&
-                taskRowFrames[candidate.id]?.contains(point) == true
-        }?.id
+    private func updateTaskDrag(_ task: TaskItem) {
+        guard let origin = dragSiblings.firstIndex(of: task.id), let frame = dragFrames[task.id] else { return }
+        let center = frame.midY + dragTranslation
+        var destination = origin
+        if dragTranslation > 0 {
+            for index in dragSiblings.indices where index > origin {
+                if let other = dragFrames[dragSiblings[index]], center > other.midY { destination = index }
+            }
+        } else {
+            for index in dragSiblings.indices.reversed() where index < origin {
+                if let other = dragFrames[dragSiblings[index]], center < other.midY { destination = index }
+            }
+        }
+        store.dropTargetID = destination == origin ? nil : dragSiblings[destination]
+    }
+
+    private func isLiftedTask(_ id: UUID) -> Bool {
+        guard let source = store.draggedTaskID else { return false }
+        return dragBranches[id] == source
+    }
+
+    private func taskDragOffset(_ id: UUID) -> CGFloat {
+        guard let source = store.draggedTaskID, let branch = dragBranches[id] else { return 0 }
+        if branch == source { return dragTranslation }
+        guard let target = store.dropTargetID,
+              let origin = dragSiblings.firstIndex(of: source),
+              let destination = dragSiblings.firstIndex(of: target),
+              let index = dragSiblings.firstIndex(of: branch) else { return 0 }
+        if destination > origin && index > origin && index <= destination { return -dragBlockHeight }
+        if destination < origin && index >= destination && index < origin { return dragBlockHeight }
+        return 0
     }
 
     private func moveTaskMenu(_ task: TaskItem, compact: Bool) -> some View {
@@ -307,8 +363,9 @@ struct PanelView: View {
         .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
         .foregroundStyle(.secondary)
         .padding(.horizontal, compact ? 2 : 5)
-        .padding(.vertical, compact ? 1 : 3)
-        .background(hoveredMoveTaskID == task.id ? Color.primary.opacity(0.10) : .clear, in: RoundedRectangle(cornerRadius: 6))
+        .padding(.vertical, compact ? 0 : 3)
+        .frame(height: compact ? (taskRowFrames[task.id]?.height ?? 32) : nil)
+        .background(hoveredMoveTaskID == task.id ? Color.primary.opacity(0.10) : .clear, in: RoundedRectangle(cornerRadius: compact ? 10 : 6))
         .onHover { hoveredMoveTaskID = $0 ? task.id : nil }
         .help("Move task and all subtasks to another tab")
         .accessibilityLabel("Move \(task.title) to another tab")

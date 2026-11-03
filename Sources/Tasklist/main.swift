@@ -192,6 +192,8 @@ final class TaskPanel: NSPanel {
     private func hide() {
         let start = ProcessInfo.processInfo.systemUptime
         store.cancelSwipe()
+        store.draggedTaskID = nil
+        store.dropTargetID = nil
         store.appearanceTabID = nil
         if NSColorPanel.sharedColorPanelExists { NSColorPanel.shared.orderOut(nil) }
         store.flush()
