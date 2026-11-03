@@ -24,6 +24,8 @@ enum Prompt {
     @Published var prompt: Prompt?
     @Published var promptText = ""
     @Published var searchIndex = 0
+    @Published var draggedTaskID: UUID?
+    @Published var dropTargetID: UUID?
     @Published var collapsedTaskIDs: Set<UUID> = []
     @Published var showCompleted = true
     @Published var showHelp = false
@@ -116,6 +118,8 @@ enum Prompt {
         }
     }
     func selectTab(_ id: UUID) {
+        draggedTaskID = nil
+        dropTargetID = nil
         navigation.reset()
         cancelSwipe()
         change { $0.selectedTabID = id }
@@ -147,6 +151,24 @@ enum Prompt {
         let tabID = tab.id
         change { _ = $0.addTask(title: text, tabID: tabID, parentID: detailID) }
         subtaskDraft = ""
+    }
+    func reorderTask(_ id: UUID, relativeTo target: UUID) {
+        let tabID = tab.id
+        change { $0.reorderTask(id: id, relativeTo: target, tabID: tabID) }
+        draggedTaskID = nil
+        dropTargetID = nil
+        flush()
+    }
+    func moveTask(_ id: UUID, to destination: UUID) {
+        let source = tab.id
+        var moved = false
+        change { moved = $0.moveTask(id: id, from: source, to: destination) }
+        guard moved else { return }
+        undoWorkspace = nil
+        // Follow the moved tree so its new location is immediately visible.
+        selectTab(destination)
+        openTask(id)
+        flush()
     }
     func toggle(_ task: TaskItem) {
         let tabID = tab.id

@@ -82,3 +82,5 @@ Lucide icons and search metadata are bundled locally; the picker makes no networ
 Task rows use compact spacing in lists and details. Click the chevron to the left of a parent task to collapse or expand its subtasks; clicking its title opens details. Nested collapse choices are retained during the app session.
 
 Two-finger horizontal swipes over the task content navigate session history: swipe right for back, left for forward. An edge semicircle and arrow fill with the gesture; reaching the threshold navigates once with a light haptic tick. Short gestures retract, and vertical scrolling stays available. History resets when switching tabs; opening another task after going back replaces the forward branch. The tab strip keeps its own horizontal scrolling.
+
+Drag a task’s left-hand grip onto a sibling to reorder it, in either the main list or a task’s subtask list. Order saves automatically. The separate move icon beside each row (or **Move** in detail) moves that task and all descendants to another tab and opens it there. A moved subtask becomes a top-level task in its destination.

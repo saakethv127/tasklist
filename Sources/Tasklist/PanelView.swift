@@ -9,6 +9,8 @@ struct PanelView: View {
     @ObservedObject var store: AppStore
     private enum Field: Hashable { case add, search, subtask, notes }
     @FocusState private var focusedField: Field?
+    @State private var hoveredMoveTaskID: UUID?
+    @State private var taskRowFrames: [UUID: CGRect] = [:]
     private var accent: Color { store.tab.themeColor }
 
     var body: some View {
@@ -33,6 +35,8 @@ struct PanelView: View {
 
         }
         .frame(width: 400, height: 560)
+        .coordinateSpace(name: "taskReorder")
+        .onPreferenceChange(TaskRowFrames.self) { taskRowFrames = $0 }
         .preferredColorScheme(.dark)
         .tint(accent)
         .foregroundStyle(.primary)
@@ -199,58 +203,115 @@ struct PanelView: View {
     private func taskRow(_ task: TaskItem, depth: Int = 0, showsDisclosure: Bool = true) -> some View {
         let children = store.tab.children(of: task.id)
         let collapsed = store.collapsedTaskIDs.contains(task.id)
-        return HStack(alignment: .center, spacing: 6) {
-            if showsDisclosure {
-                if !children.isEmpty {
-                    Button { store.toggleExpansion(task.id) } label: {
-                        Image(systemName: collapsed ? "chevron.right" : "chevron.down")
-                            .font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
-                            .frame(width: 20, height: 26).contentShape(Rectangle())
-                    }.buttonStyle(.plain)
-                        .help(collapsed ? "Expand subtasks" : "Collapse subtasks")
-                        .accessibilityLabel("\(collapsed ? "Expand" : "Collapse") subtasks: \(task.title)")
-                } else {
-                    Color.clear.frame(width: 20, height: 1)
-                }
-            }
-            Button { store.toggle(task) } label: {
-                Image(systemName: task.isComplete ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: depth > 0 ? 15 : 18, weight: .light))
-                    .foregroundStyle(task.isComplete ? accent : Color.secondary.opacity(0.65))
-                    .frame(width: 22, height: 24)
-            }.buttonStyle(.plain).accessibilityLabel("\(task.isComplete ? "Reopen" : "Complete") \(task.title)")
-            Button { store.openTask(task.id) } label: {
-                HStack(spacing: 6) {
-                    HStack(spacing: 6) {
-                        Text(task.title.isEmpty ? "Untitled task" : task.title)
-                            .font(.system(size: depth > 0 ? 12 : 13, weight: depth > 0 ? .regular : .medium))
-                            .strikethrough(task.isComplete).foregroundStyle(task.isComplete ? .secondary : .primary)
-                            .lineLimit(2).multilineTextAlignment(.leading)
-                        if !children.isEmpty {
-                            Text("\(children.filter(\.isComplete).count)/\(children.count)")
-                                .font(.system(size: 10)).foregroundStyle(.secondary).fixedSize()
-                                .accessibilityLabel("\(children.filter(\.isComplete).count) of \(children.count) subtasks complete")
+        return HStack(spacing: 5) {
+            HStack(alignment: .center, spacing: 6) {
+                Image(systemName: "line.3.horizontal")
+                    .font(.system(size: 9)).foregroundStyle(.tertiary)
+                    .frame(width: 16, height: 26).contentShape(Rectangle())
+                    .help("Drag to reorder among sibling tasks")
+                    .accessibilityLabel("Drag to reorder \(task.title)")
+                    .gesture(DragGesture(minimumDistance: 4, coordinateSpace: .named("taskReorder"))
+                        .onChanged { value in
+                            store.draggedTaskID = task.id
+                            store.dropTargetID = reorderTarget(for: task, at: value.location)
                         }
+                        .onEnded { value in
+                            if let target = reorderTarget(for: task, at: value.location) {
+                                withAnimation(.easeInOut(duration: 0.16)) { store.reorderTask(task.id, relativeTo: target) }
+                            }
+                            store.draggedTaskID = nil
+                            store.dropTargetID = nil
+                        })
+
+                if showsDisclosure {
+                    if !children.isEmpty {
+                        Button { store.toggleExpansion(task.id) } label: {
+                            Image(systemName: collapsed ? "chevron.right" : "chevron.down")
+                                .font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
+                                .frame(width: 20, height: 26).contentShape(Rectangle())
+                        }.buttonStyle(.plain)
+                            .help(collapsed ? "Expand subtasks" : "Collapse subtasks")
+                            .accessibilityLabel("\(collapsed ? "Expand" : "Collapse") subtasks: \(task.title)")
+                    } else {
+                        Color.clear.frame(width: 20, height: 1)
                     }
-                    Spacer(minLength: 2)
-                    if !task.notes.isEmpty { Image(systemName: "text.alignleft").font(.system(size: 10)).foregroundStyle(.tertiary) }
-                    Image(systemName: "chevron.right").font(.system(size: 9, weight: .semibold)).foregroundStyle(.tertiary)
-                }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
-            }.buttonStyle(.plain).accessibilityLabel("Open \(task.parentID == nil ? "task" : "subtask"): \(task.title)")
-        }
-        .padding(.vertical, 3).padding(.horizontal, 6)
-        .padding(.leading, CGFloat(min(depth, 3)) * 12)
-        .background(store.selectedTaskID == task.id ? accent.opacity(0.10) : .primary.opacity(depth == 0 ? 0.025 : 0), in: RoundedRectangle(cornerRadius: 10))
-        .contextMenu {
-            if showsDisclosure && !children.isEmpty {
-                Button(collapsed ? "Expand subtasks" : "Collapse subtasks") { store.toggleExpansion(task.id) }
+                }
+                Button { store.toggle(task) } label: {
+                    Image(systemName: task.isComplete ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: depth > 0 ? 15 : 18, weight: .light))
+                        .foregroundStyle(task.isComplete ? accent : Color.secondary.opacity(0.65))
+                        .frame(width: 22, height: 24)
+                }.buttonStyle(.plain).accessibilityLabel("\(task.isComplete ? "Reopen" : "Complete") \(task.title)")
+                Button { store.openTask(task.id) } label: {
+                    HStack(spacing: 6) {
+                        HStack(spacing: 6) {
+                            Text(task.title.isEmpty ? "Untitled task" : task.title)
+                                .font(.system(size: depth > 0 ? 12 : 13, weight: depth > 0 ? .regular : .medium))
+                                .strikethrough(task.isComplete).foregroundStyle(task.isComplete ? .secondary : .primary)
+                                .lineLimit(2).multilineTextAlignment(.leading)
+                            if !children.isEmpty {
+                                Text("\(children.filter(\.isComplete).count)/\(children.count)")
+                                    .font(.system(size: 10)).foregroundStyle(.secondary).fixedSize()
+                                    .accessibilityLabel("\(children.filter(\.isComplete).count) of \(children.count) subtasks complete")
+                            }
+                        }
+                        Spacer(minLength: 2)
+                        if !task.notes.isEmpty { Image(systemName: "text.alignleft").font(.system(size: 10)).foregroundStyle(.tertiary) }
+                        Image(systemName: "chevron.right").font(.system(size: 9, weight: .semibold)).foregroundStyle(.tertiary)
+                    }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+                }.buttonStyle(.plain).accessibilityLabel("Open \(task.parentID == nil ? "task" : "subtask"): \(task.title)")
             }
-            Button("Open details") { store.openTask(task.id) }
-            Button("Add subtask") { store.openTask(task.id); store.focusEntry() }
-            Button(task.isComplete ? "Mark incomplete" : "Complete") { store.toggle(task) }
-            Divider()
-            Button("Delete…") { store.beginPrompt(.deleteTask(task.id)) }
+            .padding(.vertical, 3).padding(.horizontal, 6)
+            .padding(.leading, CGFloat(min(depth, 3)) * 12)
+            .background(store.selectedTaskID == task.id ? accent.opacity(0.10) : .primary.opacity(depth == 0 ? 0.025 : 0), in: RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(store.dropTargetID == task.id ? accent : .clear, lineWidth: 1.5))
+            .opacity(store.draggedTaskID == task.id ? 0.55 : 1)
+            .background(GeometryReader { geometry in
+                Color.clear.preference(key: TaskRowFrames.self, value: [task.id: geometry.frame(in: .named("taskReorder"))])
+            })
+            .contextMenu {
+                if showsDisclosure && !children.isEmpty {
+                    Button(collapsed ? "Expand subtasks" : "Collapse subtasks") { store.toggleExpansion(task.id) }
+                }
+                Button("Open details") { store.openTask(task.id) }
+                Button("Add subtask") { store.openTask(task.id); store.focusEntry() }
+                Button(task.isComplete ? "Mark incomplete" : "Complete") { store.toggle(task) }
+                Divider()
+                Button("Delete…") { store.beginPrompt(.deleteTask(task.id)) }
+            }
+            moveTaskMenu(task, compact: true)
         }
+    }
+
+
+    private func reorderTarget(for task: TaskItem, at point: CGPoint) -> UUID? {
+        store.tab.tasks.first { candidate in
+            candidate.id != task.id && candidate.parentID == task.parentID &&
+                taskRowFrames[candidate.id]?.contains(point) == true
+        }?.id
+    }
+
+    private func moveTaskMenu(_ task: TaskItem, compact: Bool) -> some View {
+        Menu {
+            ForEach(store.workspace.tabs.filter { $0.id != store.tab.id }) { destination in
+                Button(destination.name) { store.moveTask(task.id, to: destination.id) }
+            }
+            if store.workspace.tabs.count < 2 { Text("Create another tab first") }
+        } label: {
+            if compact {
+                Image(systemName: "rectangle.2.swap").font(.system(size: 11)).frame(width: 22, height: 24)
+            } else {
+                Label("Move", systemImage: "rectangle.2.swap").font(.system(size: 11))
+            }
+        }
+        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, compact ? 2 : 5)
+        .padding(.vertical, compact ? 1 : 3)
+        .background(hoveredMoveTaskID == task.id ? Color.primary.opacity(0.10) : .clear, in: RoundedRectangle(cornerRadius: 6))
+        .onHover { hoveredMoveTaskID = $0 ? task.id : nil }
+        .help("Move task and all subtasks to another tab")
+        .accessibilityLabel("Move \(task.title) to another tab")
     }
 
     private func detailBody(_ task: TaskItem) -> some View {
@@ -262,6 +323,7 @@ struct PanelView: View {
                 }.buttonStyle(.plain).foregroundStyle(.secondary).help("Back · ⌘⌥←")
                 Spacer()
                 Text(task.parentID == nil ? "TASK" : "SUBTASK").font(.system(size: 9, weight: .semibold)).tracking(1.3).foregroundStyle(.tertiary)
+                moveTaskMenu(task, compact: false)
                 iconButton("trash", "Delete task · ⌘⌫") { store.beginPrompt(.deleteTask(task.id)) }
             }.padding(.bottom, 8)
             ScrollView {
@@ -649,5 +711,13 @@ private struct TabAppearanceView: View {
             }.padding(18).frame(width: 300).preferredColorScheme(.dark).tint(neutralAccent)
                 .onAppear { DispatchQueue.main.async { searchFocused = true } }
         }
+    }
+}
+
+
+private struct TaskRowFrames: PreferenceKey {
+    static let defaultValue: [UUID: CGRect] = [:]
+    static func reduce(value: inout [UUID: CGRect], nextValue: () -> [UUID: CGRect]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, new in new })
     }
 }

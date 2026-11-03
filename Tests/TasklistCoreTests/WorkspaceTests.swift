@@ -193,3 +193,51 @@ private func unwrap<T>(_ value: T?) throws -> T { try #require(value) }
     _ = swipe.update(dx: 300, dy: 0, canBack: true, canForward: true)
     #expect(swipe.direction == -1 && swipe.progress == 1 && swipe.committed)
 }
+
+@Test func siblingReorderingPreservesHierarchyAndRoundTrips() throws {
+    var data = Workspace()
+    let tab = data.selectedTabID
+    let a = try unwrap(data.addTask(title: "A", tabID: tab))
+    let b = try unwrap(data.addTask(title: "B", tabID: tab))
+    let c = try unwrap(data.addTask(title: "C", tabID: tab, parentID: a))
+    let d = try unwrap(data.addTask(title: "D", tabID: tab, parentID: a))
+    let e = try unwrap(data.addTask(title: "E", tabID: tab, parentID: c))
+    data.reorderTask(id: a, relativeTo: b, tabID: tab)
+    #expect(data.selectedTab.children(of: nil).map(\.id) == [b, a])
+    data.reorderTask(id: c, relativeTo: d, tabID: tab)
+    #expect(data.selectedTab.children(of: a).map(\.id) == [d, c])
+    #expect(data.selectedTab.descendants(of: a) == [c, d, e])
+    let unchanged = data
+    data.reorderTask(id: e, relativeTo: b, tabID: tab)
+    #expect(data == unchanged)
+    data.reorderTask(id: a, relativeTo: b, tabID: tab)
+    #expect(data.selectedTab.children(of: nil).map(\.id) == [a, b])
+    try data.validate()
+    #expect(try JSONDecoder().decode(Workspace.self, from: JSONEncoder().encode(data)) == data)
+}
+
+@Test func movingTaskTransfersEntireTreeAndPromotesNestedRoot() throws {
+    var data = Workspace()
+    let source = data.selectedTabID
+    let parent = try unwrap(data.addTask(title: "Parent", tabID: source))
+    let child = try unwrap(data.addTask(title: "Child", tabID: source, parentID: parent))
+    let grandchild = try unwrap(data.addTask(title: "Grandchild", tabID: source, parentID: child))
+    data.updateTask(id: child, tabID: source) { $0.notes = "Keep notes"; $0.isComplete = true }
+    let originalChild = try unwrap(data.tabs[0].tasks.first { $0.id == child })
+    let destination = try unwrap(data.addTab(name: "Destination"))
+    let existing = try unwrap(data.addTask(title: "Existing", tabID: destination))
+    let moved = data.moveTask(id: child, from: source, to: destination)
+    #expect(moved)
+    #expect(data.tabs[0].tasks.map(\.id) == [parent])
+    #expect(data.tabs[1].children(of: nil).map(\.id) == [existing, child])
+    #expect(data.tabs[1].descendants(of: child) == [grandchild])
+    var expected = originalChild; expected.parentID = nil
+    #expect(data.tabs[1].tasks.first { $0.id == child } == expected)
+    let unchanged = data
+    let invalidMove = data.moveTask(id: parent, from: source, to: UUID())
+    #expect(!invalidMove && data == unchanged)
+    let movedBack = data.moveTask(id: child, from: destination, to: source)
+    #expect(movedBack && data.tabs[0].descendants(of: child) == [grandchild])
+    try data.validate()
+    #expect(try JSONDecoder().decode(Workspace.self, from: JSONEncoder().encode(data)) == data)
+}

@@ -122,6 +122,30 @@ public struct Workspace: Codable, Equatable, Sendable {
         tabs[index].tasks.removeAll { ids.contains($0.id) }
     }
 
+    // Move to a sibling's position without changing parentage or descendant order.
+    public mutating func reorderTask(id: UUID, relativeTo targetID: UUID, tabID: UUID) {
+        guard id != targetID, let ti = tabs.firstIndex(where: { $0.id == tabID }),
+              let source = tabs[ti].tasks.firstIndex(where: { $0.id == id }),
+              let target = tabs[ti].tasks.firstIndex(where: { $0.id == targetID }),
+              tabs[ti].tasks[source].parentID == tabs[ti].tasks[target].parentID else { return }
+        let task = tabs[ti].tasks.remove(at: source)
+        tabs[ti].tasks.insert(task, at: target)
+    }
+
+    @discardableResult public mutating func moveTask(id: UUID, from sourceTabID: UUID, to destinationTabID: UUID) -> Bool {
+        guard sourceTabID != destinationTabID,
+              let source = tabs.firstIndex(where: { $0.id == sourceTabID }),
+              let destination = tabs.firstIndex(where: { $0.id == destinationTabID }),
+              tabs[source].tasks.contains(where: { $0.id == id }) else { return false }
+        let ids = tabs[source].descendants(of: id).union([id])
+        var moved = tabs[source].tasks.filter { ids.contains($0.id) }
+        // A subtask moved to another tab becomes a root there; its descendants stay attached.
+        for index in moved.indices where moved[index].id == id { moved[index].parentID = nil }
+        tabs[source].tasks.removeAll { ids.contains($0.id) }
+        tabs[destination].tasks.append(contentsOf: moved)
+        return true
+    }
+
     public func search(_ query: String) -> [SearchResult] {
         let words = query.split(whereSeparator: { $0.isWhitespace }).map(String.init)
         func matches(_ text: String) -> Bool { words.allSatisfy { text.localizedStandardContains($0) } }
