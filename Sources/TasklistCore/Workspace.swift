@@ -136,11 +136,9 @@ public struct Workspace: Codable, Equatable, Sendable {
         guard sourceTabID != destinationTabID,
               let source = tabs.firstIndex(where: { $0.id == sourceTabID }),
               let destination = tabs.firstIndex(where: { $0.id == destinationTabID }),
-              tabs[source].tasks.contains(where: { $0.id == id }) else { return false }
+              tabs[source].tasks.contains(where: { $0.id == id && $0.parentID == nil }) else { return false }
         let ids = tabs[source].descendants(of: id).union([id])
-        var moved = tabs[source].tasks.filter { ids.contains($0.id) }
-        // A subtask moved to another tab becomes a root there; its descendants stay attached.
-        for index in moved.indices where moved[index].id == id { moved[index].parentID = nil }
+        let moved = tabs[source].tasks.filter { ids.contains($0.id) }
         tabs[source].tasks.removeAll { ids.contains($0.id) }
         tabs[destination].tasks.append(contentsOf: moved)
         return true

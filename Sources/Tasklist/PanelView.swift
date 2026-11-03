@@ -279,7 +279,7 @@ struct PanelView: View {
                 Divider()
                 Button("Delete…") { store.beginPrompt(.deleteTask(task.id)) }
             }
-            moveTaskMenu(task, compact: true)
+            if task.parentID == nil { moveTaskMenu(task, compact: true) }
         }
     }
 
@@ -323,7 +323,7 @@ struct PanelView: View {
                 }.buttonStyle(.plain).foregroundStyle(.secondary).help("Back · ⌘⌥←")
                 Spacer()
                 Text(task.parentID == nil ? "TASK" : "SUBTASK").font(.system(size: 9, weight: .semibold)).tracking(1.3).foregroundStyle(.tertiary)
-                moveTaskMenu(task, compact: false)
+                if task.parentID == nil { moveTaskMenu(task, compact: false) }
                 iconButton("trash", "Delete task · ⌘⌫") { store.beginPrompt(.deleteTask(task.id)) }
             }.padding(.bottom, 8)
             ScrollView {

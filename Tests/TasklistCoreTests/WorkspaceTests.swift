@@ -216,7 +216,7 @@ private func unwrap<T>(_ value: T?) throws -> T { try #require(value) }
     #expect(try JSONDecoder().decode(Workspace.self, from: JSONEncoder().encode(data)) == data)
 }
 
-@Test func movingTaskTransfersEntireTreeAndPromotesNestedRoot() throws {
+@Test func onlyTopLevelTasksCanMoveWithTheirEntireTree() throws {
     var data = Workspace()
     let source = data.selectedTabID
     let parent = try unwrap(data.addTask(title: "Parent", tabID: source))
@@ -226,17 +226,20 @@ private func unwrap<T>(_ value: T?) throws -> T { try #require(value) }
     let originalChild = try unwrap(data.tabs[0].tasks.first { $0.id == child })
     let destination = try unwrap(data.addTab(name: "Destination"))
     let existing = try unwrap(data.addTask(title: "Existing", tabID: destination))
-    let moved = data.moveTask(id: child, from: source, to: destination)
+    let beforeRejectedMove = data
+    let rejected = data.moveTask(id: child, from: source, to: destination)
+    #expect(!rejected && data == beforeRejectedMove)
+    let moved = data.moveTask(id: parent, from: source, to: destination)
     #expect(moved)
-    #expect(data.tabs[0].tasks.map(\.id) == [parent])
-    #expect(data.tabs[1].children(of: nil).map(\.id) == [existing, child])
+    #expect(data.tabs[0].tasks.isEmpty)
+    #expect(data.tabs[1].children(of: nil).map(\.id) == [existing, parent])
     #expect(data.tabs[1].descendants(of: child) == [grandchild])
-    var expected = originalChild; expected.parentID = nil
-    #expect(data.tabs[1].tasks.first { $0.id == child } == expected)
+    #expect(data.tabs[1].tasks.first { $0.id == child } == originalChild)
+    #expect(data.tabs[1].descendants(of: parent) == [child, grandchild])
     let unchanged = data
     let invalidMove = data.moveTask(id: parent, from: source, to: UUID())
     #expect(!invalidMove && data == unchanged)
-    let movedBack = data.moveTask(id: child, from: destination, to: source)
+    let movedBack = data.moveTask(id: parent, from: destination, to: source)
     #expect(movedBack && data.tabs[0].descendants(of: child) == [grandchild])
     try data.validate()
     #expect(try JSONDecoder().decode(Workspace.self, from: JSONEncoder().encode(data)) == data)

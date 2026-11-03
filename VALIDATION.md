@@ -80,3 +80,5 @@ Replaced the separately clipped full-circle strokes with a visible half-circle s
 ## Reordering and moving task trees
 
 All 14 core tests pass. Added coverage for sibling reordering in both directions, rejected cross-parent reorder, nested-tree transfer, promotion of a moved subtask, preservation of notes/completion/IDs, invalid destinations, and serialization. Native UI dragging verified root task and detail subtask reordering using direct in-panel handle gestures. The Move menu transferred a five-task tree to another tab; saved JSON confirmed the nested hierarchy and reordered siblings, with the unrelated source task retained. Move controls are outside row selection/drop highlights and have independent hover styling.
+
+Top-level-only move restriction: Move controls are hidden for nested rows and nested detail views. The model rejects subtask transfers without changing data; updated tests verify that root transfers preserve every descendant and parent link.
