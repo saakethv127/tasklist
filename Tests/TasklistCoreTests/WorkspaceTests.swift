@@ -103,3 +103,25 @@ import Testing
 }
 
 private func unwrap<T>(_ value: T?) throws -> T { try #require(value) }
+
+@Test func legacyTaskFilesAndIndependentTabAppearanceRoundTrip() throws {
+    var original = Workspace()
+    _ = original.addTask(title: "Keep my task", tabID: original.selectedTabID)
+    _ = original.addTab(name: "Work")
+    // The previous app's JSON has no appearance keys at all.
+    let legacy = try JSONEncoder().encode(original)
+    var data = try JSONDecoder().decode(Workspace.self, from: legacy)
+    #expect(data.tabs[0].colorHex == nil)
+    #expect(data.tabs[0].iconID == nil)
+    data.tabs[1].colorHex = "3478D4"
+    data.tabs[1].iconID = "briefcase"
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let storage = WorkspaceStorage(url: directory.appendingPathComponent("tasks.json"))
+    try storage.save(data)
+    let restored = try storage.load()
+    #expect(restored == data)
+    #expect(restored.tabs[0] == original.tabs[0])
+    #expect(restored.tabs[1].colorHex == "3478D4")
+    #expect(restored.tabs[1].iconID == "briefcase")
+}

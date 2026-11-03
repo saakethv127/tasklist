@@ -21,6 +21,7 @@ enum Prompt {
     @Published var searchIndex = 0
     @Published var showCompleted = true
     @Published var showHelp = false
+    @Published var appearanceTabID: UUID?
     @Published var editingNotes = false
     @Published var focusRequest = 0
     @Published var storageError: String?
@@ -31,6 +32,9 @@ enum Prompt {
     private var canSave = true
     private var isDirty = false
     private var saveWork: DispatchWorkItem?
+    private lazy var tabColorPicker = TabColorPicker { [weak self] id, hex in
+        self?.setTabAppearance(id, colorHex: hex)
+    }
 
     init(url: URL) {
         storage = WorkspaceStorage(url: url)
@@ -78,6 +82,22 @@ enum Prompt {
     }
     func revealData() { NSWorkspace.shared.selectFile(storage.url.path, inFileViewerRootedAtPath: storage.url.deletingLastPathComponent().path) }
     func focusEntry() { focusRequest += 1 }
+    func customizeTab(_ id: UUID) {
+        showHelp = false
+        appearanceTabID = id
+    }
+    func openCustomTabColor(_ id: UUID) {
+        guard let tab = workspace.tabs.first(where: { $0.id == id }) else { return }
+        appearanceTabID = nil
+        DispatchQueue.main.async { self.tabColorPicker.show(for: tab) }
+    }
+    func setTabAppearance(_ id: UUID, colorHex: String? = nil, iconID: String? = nil) {
+        change { data in
+            guard let index = data.tabs.firstIndex(where: { $0.id == id }) else { return }
+            if let colorHex { data.tabs[index].colorHex = colorHex }
+            if let iconID { data.tabs[index].iconID = iconID }
+        }
+    }
     func selectTab(_ id: UUID) {
         change { $0.selectedTabID = id }
         isSearching = false
@@ -138,6 +158,7 @@ enum Prompt {
         if let id = selectedTaskID ?? visibleRows.first?.task.id { openTask(id) }
     }
     func beginSearch() {
+        appearanceTabID = nil
         isSearching = true
         query = ""
         searchIndex = 0
@@ -150,6 +171,7 @@ enum Prompt {
         if let id = result.taskID { openTask(id) }
     }
     func beginPrompt(_ value: Prompt) {
+        appearanceTabID = nil
         // End any editor before covering it. A modal must never allow typing into
         // the task title/notes behind it during SwiftUI's focus handoff.
         NSApp.keyWindow?.makeFirstResponder(nil)
@@ -236,6 +258,11 @@ enum Prompt {
     func handleKey(_ event: NSEvent) -> Bool {
         let flags = event.modifierFlags.intersection([.command, .option, .shift, .control])
         let key = event.charactersIgnoringModifiers?.lowercased() ?? ""
+        if appearanceTabID != nil, event.keyCode == 53 {
+            appearanceTabID = nil
+            focusEntry()
+            return true
+        }
         if prompt != nil {
             if event.keyCode == 53 { prompt = nil; focusEntry(); return true }
             if event.keyCode == 36 || event.keyCode == 76 { confirmPrompt(); return true }
@@ -289,5 +316,33 @@ enum Prompt {
             if event.keyCode == 36, selectedTaskID != nil { openSelected(); return true }
         }
         return false
+    }
+}
+
+@MainActor private final class TabColorPicker: NSObject {
+    private var tabID: UUID?
+    private let update: (UUID, String) -> Void
+    init(update: @escaping (UUID, String) -> Void) { self.update = update }
+    func show(for tab: TaskTab) {
+        tabID = tab.id
+        let rgb = UInt32(tab.colorHex ?? "BDBDBD", radix: 16) ?? 0xBDBDBD
+        let panel = NSColorPanel.shared
+        panel.appearance = NSAppearance(named: .darkAqua)
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .canJoinAllApplications]
+        panel.level = .floating
+        panel.title = "Color · \(tab.name)"
+        panel.showsAlpha = false
+        panel.isContinuous = true
+        panel.color = NSColor(srgbRed: CGFloat((rgb >> 16) & 255) / 255, green: CGFloat((rgb >> 8) & 255) / 255, blue: CGFloat(rgb & 255) / 255, alpha: 1)
+        panel.setTarget(self)
+        panel.setAction(#selector(colorChanged(_:)))
+        panel.orderFront(nil)
+        panel.makeKey()
+    }
+    @objc private func colorChanged(_ panel: NSColorPanel) {
+        guard let tabID, let rgb = panel.color.usingColorSpace(.sRGB) else { return }
+        func channel(_ value: CGFloat) -> Int { Int(min(255, max(0, (value * 255).rounded()))) }
+        let hex = String(format: "%02X%02X%02X", channel(rgb.redComponent), channel(rgb.greenComponent), channel(rgb.blueComponent))
+        update(tabID, hex)
     }
 }

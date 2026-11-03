@@ -64,6 +64,8 @@ final class TaskPanel: NSPanel {
         panel.isReleasedWhenClosed = false
         panel.isOpaque = false
         panel.backgroundColor = .clear
+        panel.appearance = NSAppearance(named: .darkAqua)
+        panel.alphaValue = 0.95
         panel.hasShadow = true
         panel.isMovable = false
         panel.animationBehavior = .none
@@ -176,6 +178,8 @@ final class TaskPanel: NSPanel {
 
     private func hide() {
         let start = ProcessInfo.processInfo.systemUptime
+        store.appearanceTabID = nil
+        if NSColorPanel.sharedColorPanelExists { NSColorPanel.shared.orderOut(nil) }
         store.flush()
         panel.orderOut(nil)
         recordToggle(start: start, action: "hide")

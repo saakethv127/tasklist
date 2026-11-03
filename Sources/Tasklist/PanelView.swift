@@ -3,16 +3,13 @@ import SwiftUI
 import TasklistCore
 #endif
 
-private let accent = Color(nsColor: NSColor(name: nil) { appearance in
-    appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-        ? NSColor(srgbRed: 0.48, green: 0.83, blue: 0.68, alpha: 1)
-        : NSColor(srgbRed: 0.18, green: 0.47, blue: 0.36, alpha: 1)
-})
+private let neutralAccent = Color(white: 0.74)
 
 struct PanelView: View {
     @ObservedObject var store: AppStore
     private enum Field: Hashable { case add, search, subtask, notes }
     @FocusState private var focusedField: Field?
+    private var accent: Color { store.tab.themeColor }
 
     var body: some View {
         ZStack {
@@ -34,6 +31,7 @@ struct PanelView: View {
             if store.prompt != nil { PromptView(store: store) }
         }
         .frame(width: 400, height: 560)
+        .preferredColorScheme(.dark)
         .tint(accent)
         .foregroundStyle(.primary)
         .onAppear { focusEntry() }
@@ -44,16 +42,23 @@ struct PanelView: View {
         .onChange(of: store.detailID) { _, _ in focusEntry() }
         .onChange(of: store.query) { _, _ in store.searchIndex = 0 }
         .popover(isPresented: $store.showHelp, arrowEdge: .top) { helpView }
+        .popover(isPresented: Binding(get: { store.appearanceTabID != nil }, set: { if !$0 { store.appearanceTabID = nil } }), arrowEdge: .trailing) {
+            if let id = store.appearanceTabID { TabAppearanceView(store: store, tabID: id) }
+        }
+        .onChange(of: store.appearanceTabID) { _, id in
+            if id == nil { store.flush() }
+        }
     }
 
     private var header: some View {
         HStack(spacing: 8) {
-            Image(systemName: "checklist").font(.system(size: 18, weight: .semibold)).foregroundStyle(accent)
+            Image(systemName: "checklist").font(.system(size: 18, weight: .semibold)).foregroundStyle(.secondary)
             Text("Tasklist").font(.system(size: 17, weight: .semibold, design: .rounded))
             Spacer()
             iconButton("magnifyingglass", "Search everything · ⌘K") { store.beginSearch() }
             Menu {
                 Button("New tab…", action: { store.beginPrompt(.newTab) })
+                Button("Tab appearance…", action: { store.customizeTab(store.tab.id) })
                 Button("Rename tab…", action: { store.beginPrompt(.renameTab(store.tab.id)) })
                 Button("Delete tab…", action: { store.beginPrompt(.deleteTab(store.tab.id)) })
                 Divider()
@@ -66,6 +71,7 @@ struct PanelView: View {
                 Button("Quit Tasklist") { NSApplication.shared.terminate(nil) }
             } label: { Image(systemName: "ellipsis").frame(width: 26, height: 26) }
             .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+            .tint(neutralAccent)
             .help("Tab actions and settings").accessibilityLabel("Tab actions and settings")
             iconButton("minus", "Hide · ⌘⌥;") { store.hidePanel?() }
         }
@@ -80,6 +86,7 @@ struct PanelView: View {
                         ForEach(store.workspace.tabs) { tab in
                             Button { store.selectTab(tab.id) } label: {
                                 HStack(spacing: 6) {
+                                    TabIcon(id: tab.iconID).foregroundStyle(tab.themeColor).frame(width: 13, height: 13)
                                     Text(tab.name).lineLimit(1)
                                     Text("\(tab.tasks.filter { !$0.isComplete && $0.parentID == nil }.count)")
                                         .font(.system(size: 10, weight: .medium, design: .rounded))
@@ -87,13 +94,14 @@ struct PanelView: View {
                                 }
                                 .font(.system(size: 12, weight: store.tab.id == tab.id ? .semibold : .medium))
                                 .padding(.horizontal, 11).padding(.vertical, 7)
-                                .background(store.tab.id == tab.id ? accent.opacity(0.15) : Color.clear, in: Capsule())
-                                .overlay(Capsule().strokeBorder(store.tab.id == tab.id ? accent.opacity(0.2) : .clear, lineWidth: 0.5))
+                                .background(store.tab.id == tab.id ? tab.themeColor.opacity(0.13) : Color.clear, in: Capsule())
+                                .overlay(Capsule().strokeBorder(store.tab.id == tab.id ? tab.themeColor.opacity(0.28) : .clear, lineWidth: 0.5))
                             }
                             .buttonStyle(.plain).id(tab.id)
                             .accessibilityLabel("\(tab.name) tab")
                             .accessibilityAddTraits(store.tab.id == tab.id ? .isSelected : [])
                             .contextMenu {
+                                Button("Appearance…") { store.customizeTab(tab.id) }
                                 Button("Rename…") { store.beginPrompt(.renameTab(tab.id)) }
                                 Button("Delete…") { store.beginPrompt(.deleteTab(tab.id)) }
                             }
@@ -103,6 +111,7 @@ struct PanelView: View {
                 .onChange(of: store.workspace.selectedTabID) { _, id in withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(id) } }
             }
             iconButton("plus", "New tab · ⌘T") { store.beginPrompt(.newTab) }
+            iconButton("paintpalette", "Tab color and icon") { store.customizeTab(store.tab.id) }
         }
         .padding(.bottom, 13)
     }
@@ -295,8 +304,11 @@ struct PanelView: View {
                             ForEach(Array(store.searchResults.enumerated()), id: \.element.id) { index, result in
                                 Button { store.openSearchResult(result) } label: {
                                     HStack(spacing: 10) {
-                                        Image(systemName: result.taskID == nil ? "rectangle.stack" : (result.isComplete ? "checkmark.circle.fill" : "circle"))
-                                            .font(.system(size: 16)).foregroundStyle(accent).frame(width: 22)
+                                        let resultTab = store.workspace.tabs.first { $0.id == result.tabID }
+                                        Group {
+                                            if result.taskID == nil { TabIcon(id: resultTab?.iconID).frame(width: 17, height: 17) }
+                                            else { Image(systemName: result.isComplete ? "checkmark.circle.fill" : "circle").font(.system(size: 16)) }
+                                        }.foregroundStyle(resultTab?.themeColor ?? neutralAccent).frame(width: 22)
                                         VStack(alignment: .leading, spacing: 3) {
                                             Text(result.title).font(.system(size: 13, weight: .medium)).lineLimit(1)
                                             Text(result.context).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1)
@@ -375,6 +387,7 @@ struct PanelView: View {
 
 private struct PromptView: View {
     @ObservedObject var store: AppStore
+    private var accent: Color { store.tab.themeColor }
     var body: some View {
         ZStack {
             Color.black.opacity(0.12)
@@ -459,5 +472,94 @@ private struct MarkdownNotes: View {
             guard ["http", "https", "mailto"].contains(url.scheme?.lowercased() ?? "") else { return .discarded }
             return .systemAction
         })
+    }
+}
+
+private extension TaskTab {
+    var themeColor: Color {
+        guard let hex = colorHex, hex.count == 6, let rgb = UInt32(hex, radix: 16) else { return neutralAccent }
+        return Color(red: Double((rgb >> 16) & 255) / 255, green: Double((rgb >> 8) & 255) / 255, blue: Double(rgb & 255) / 255)
+    }
+}
+
+private struct TabIcon: View {
+    static let choices: [(id: String, name: String)] = [
+        ("list", "List"), ("briefcase", "Work"), ("home", "Home"), ("star", "Star"),
+        ("code", "Code"), ("book", "Book"), ("heart", "Heart"), ("flag", "Flag"),
+        ("folder", "Folder"), ("bolt", "Bolt"), ("calendar", "Calendar"), ("coffee", "Coffee")
+    ]
+    let id: String?
+    var body: some View {
+        let name = "TabIcon-" + (Self.choices.contains(where: { $0.id == id }) ? id! : "list")
+        #if SWIFT_PACKAGE
+        Image(name, bundle: .module).resizable().scaledToFit().accessibilityHidden(true)
+        #else
+        Image(name).resizable().scaledToFit().accessibilityHidden(true)
+        #endif
+    }
+}
+
+private struct TabAppearanceView: View {
+    @ObservedObject var store: AppStore
+    let tabID: UUID
+    private var tab: TaskTab? { store.workspace.tabs.first { $0.id == tabID } }
+    private let palette: [(name: String, hex: String)] = [
+        ("Neutral", "BDBDBD"), ("Red", "DC4545"), ("Orange", "C96B24"), ("Gold", "B38A16"),
+        ("Green", "328264"), ("Teal", "24878F"), ("Blue", "3478D4"), ("Indigo", "6560C8"),
+        ("Purple", "9555BC"), ("Pink", "C9548C"), ("Brown", "947158"), ("Silver", "87929E")
+    ]
+    var body: some View {
+        if let tab {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(spacing: 9) {
+                    TabIcon(id: tab.iconID).foregroundStyle(tab.themeColor).frame(width: 20, height: 20)
+                    Text(tab.name).font(.system(size: 16, weight: .semibold)).lineLimit(1)
+                    Spacer()
+                    Button("Done") { store.appearanceTabID = nil }.buttonStyle(.bordered)
+                }
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Color").font(.system(size: 12, weight: .semibold))
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 6), spacing: 10) {
+                        ForEach(palette, id: \.hex) { item in
+                            let selected = (tab.colorHex ?? "BDBDBD") == item.hex
+                            Button { store.setTabAppearance(tabID, colorHex: item.hex) } label: {
+                                Circle().fill(TaskTab(name: "", colorHex: item.hex).themeColor)
+                                    .frame(width: 25, height: 25)
+                                    .overlay { if selected { Image(systemName: "checkmark").font(.system(size: 11, weight: .bold)).foregroundStyle(.white) } }
+                                    .padding(3)
+                                    .overlay(Circle().strokeBorder(selected ? tab.themeColor.opacity(0.6) : .clear, lineWidth: 1))
+                            }.buttonStyle(.plain).help(item.name).accessibilityLabel("\(item.name) tab color")
+                                .accessibilityAddTraits(selected ? .isSelected : [])
+                        }
+                    }
+                    Button { store.openCustomTabColor(tabID) } label: {
+                        HStack {
+                            Text("Custom color…")
+                            Spacer()
+                            RoundedRectangle(cornerRadius: 4).fill(tab.themeColor).frame(width: 24, height: 16)
+                                .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(.primary.opacity(0.25), lineWidth: 0.5))
+                        }.font(.system(size: 12)).contentShape(Rectangle())
+                    }.buttonStyle(.plain).accessibilityLabel("Custom tab color")
+                }
+                Divider()
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Icon").font(.system(size: 12, weight: .semibold))
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 6), spacing: 8) {
+                        ForEach(TabIcon.choices, id: \.id) { item in
+                            let selected = (tab.iconID ?? "list") == item.id
+                            Button { store.setTabAppearance(tabID, iconID: item.id) } label: {
+                                TabIcon(id: item.id).frame(width: 18, height: 18)
+                                    .foregroundStyle(selected ? tab.themeColor : .secondary)
+                                    .frame(width: 34, height: 34)
+                                    .background(selected ? tab.themeColor.opacity(0.13) : .primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
+                                    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(selected ? tab.themeColor.opacity(0.3) : .clear, lineWidth: 1))
+                            }.buttonStyle(.plain).help(item.name).accessibilityLabel("\(item.name) tab icon")
+                                .accessibilityAddTraits(selected ? .isSelected : [])
+                        }
+                    }
+                }
+                Text("Changes save automatically for this tab.").font(.system(size: 10)).foregroundStyle(.secondary)
+            }.padding(18).frame(width: 300).preferredColorScheme(.dark).tint(neutralAccent)
+        }
     }
 }

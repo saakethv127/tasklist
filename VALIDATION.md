@@ -4,7 +4,7 @@ Tested on Apple Silicon, macOS 27.2, with Xcode 27.2 on November 2, 2026. Build 
 
 ## Automated checks
 
-All seven Swift Testing tests pass:
+All eight Swift Testing tests pass:
 
 - Nested tasks stay in their own tab; deleting a parent removes all descendants and preserves unrelated tasks.
 - Deleting tabs maintains a valid selection and leaves an empty Inbox when deleting the last tab.
@@ -12,6 +12,7 @@ All seven Swift Testing tests pass:
 - Atomic JSON persistence round-trips Unicode, notes, completion state, and selected tab.
 - Corrupt data and newer formats are rejected without changing the original file.
 - Parent cycles and orphaned tasks are rejected.
+- Task files without appearance fields still load; individual tab colors and icons round-trip without changing other tabs or their tasks.
 - Ten searches across a 1,000-task workspace completed in 25 ms total in the final core run (about 2.5 ms per search).
 
 ## Live app checks
@@ -51,5 +52,7 @@ Memory was measured with `vmmap -summary` and `ps`. Physical footprint better re
 The app has no network activity, polling loop, or periodic refresh timer. It saves after a 250 ms typing debounce and flushes dirty data on hide/quit. Repeated toggling without edits does not rewrite the task file. Task rows and search results are rendered lazily, and hierarchy traversal groups children once rather than repeatedly scanning the whole list.
 
 ## Scope
+
+The tab appearance update was built with Xcode and inspected in the running app. Preset color changes and bundled SVG icons render in the tab strip and survive restarting the app. The appearance popover provides 12 color presets, 12 icons, and a custom-color action backed by `NSColorPanel`. The native Apple color palette was opened in the installed app; choosing Blue persisted its custom sRGB value (`0433FF`). The tab was restored to Neutral afterward. The panel now explicitly uses dark appearance with neutral header controls and 95% window opacity.
 
 Runtime verification was on the machine above. The macOS 14–15 material fallback, other keyboard layouts, external-monitor configurations, and Stage Manager were not available in this test session. The hotkey uses the ANSI semicolon key position, documented in the README. The bundle is locally signed for personal use, not notarized for distribution.

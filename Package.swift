@@ -7,7 +7,7 @@ let package = Package(
     products: [.executable(name: "Tasklist", targets: ["Tasklist"])],
     targets: [
         .target(name: "TasklistCore"),
-        .executableTarget(name: "Tasklist", dependencies: ["TasklistCore"]),
+        .executableTarget(name: "Tasklist", dependencies: ["TasklistCore"], resources: [.process("Assets.xcassets")]),
         .testTarget(name: "TasklistCoreTests", dependencies: ["TasklistCore"])
     ],
     swiftLanguageModes: [.v5]

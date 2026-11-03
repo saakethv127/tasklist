@@ -22,11 +22,16 @@ public struct TaskTab: Codable, Identifiable, Equatable, Sendable {
     public var id: UUID
     public var name: String
     public var tasks: [TaskItem]
+    // Optional so task files created before tab customization still decode.
+    public var colorHex: String?
+    public var iconID: String?
 
-    public init(id: UUID = UUID(), name: String, tasks: [TaskItem] = []) {
+    public init(id: UUID = UUID(), name: String, tasks: [TaskItem] = [], colorHex: String? = nil, iconID: String? = nil) {
         self.id = id
         self.name = name
         self.tasks = tasks
+        self.colorHex = colorHex
+        self.iconID = iconID
     }
 
     public func children(of id: UUID?) -> [TaskItem] { tasks.filter { $0.parentID == id } }
