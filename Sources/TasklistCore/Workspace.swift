@@ -95,6 +95,13 @@ public struct Workspace: Codable, Equatable, Sendable {
         return tab.id
     }
 
+    public mutating func reorderTab(id: UUID, relativeTo targetID: UUID) {
+        guard id != targetID, let source = tabs.firstIndex(where: { $0.id == id }),
+              let target = tabs.firstIndex(where: { $0.id == targetID }) else { return }
+        let moved = tabs.remove(at: source)
+        tabs.insert(moved, at: target)
+    }
+
     public mutating func deleteTab(id: UUID) {
         guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
         tabs.remove(at: index)

@@ -17,6 +17,11 @@ struct PanelView: View {
     @State private var dragBranches: [UUID: UUID] = [:]
     @State private var dragTranslation: CGFloat = 0
     @State private var dragBlockHeight: CGFloat = 0
+    @State private var tabFrames: [UUID: CGRect] = [:]
+    @State private var tabDragFrames: [UUID: CGRect] = [:]
+    @State private var tabDragID: UUID?
+    @State private var tabDragTarget: UUID?
+    @State private var tabDragTranslation: CGFloat = 0
     private var accent: Color { store.tab.themeColor }
 
     var body: some View {
@@ -140,6 +145,31 @@ struct PanelView: View {
                                 .overlay(Capsule().strokeBorder(store.tab.id == tab.id ? tab.themeColor.opacity(0.28) : .clear, lineWidth: 0.5))
                             }
                             .buttonStyle(.plain).id(tab.id)
+                            .background(GeometryReader { geometry in
+                                Color.clear.preference(key: TabFrames.self, value: [tab.id: geometry.frame(in: .named("tabReorder"))])
+                            })
+                            .highPriorityGesture(DragGesture(minimumDistance: 6, coordinateSpace: .named("tabReorder"))
+                                .onChanged { value in
+                                    if tabDragID == nil {
+                                        tabDragFrames = tabFrames
+                                        tabDragID = tab.id
+                                    }
+                                    tabDragTranslation = value.translation.width
+                                    updateTabDrag(tab.id)
+                                }
+                                .onEnded { _ in
+                                    withAnimation(.spring(response: 0.25, dampingFraction: 0.86)) {
+                                        if let target = tabDragTarget { store.reorderTab(tab.id, relativeTo: target) }
+                                        tabDragID = nil
+                                        tabDragTarget = nil
+                                        tabDragTranslation = 0
+                                    }
+                                })
+                            .offset(x: tabDragOffset(tab.id))
+                            .zIndex(tabDragID == tab.id ? 1 : 0)
+                            .shadow(color: .black.opacity(tabDragID == tab.id ? 0.25 : 0), radius: 5, y: 2)
+                            .animation(tabDragID == tab.id ? nil : .spring(response: 0.24, dampingFraction: 0.86), value: tabDragTarget)
+                            .help("Click to switch tabs; drag to reorder")
                             .accessibilityLabel("\(tab.name) tab")
                             .accessibilityAddTraits(store.tab.id == tab.id ? .isSelected : [])
                             .contextMenu {
@@ -149,6 +179,8 @@ struct PanelView: View {
                             }
                         }
                     }
+                    .coordinateSpace(name: "tabReorder")
+                    .onPreferenceChange(TabFrames.self) { tabFrames = $0 }
                 }
                 .onChange(of: store.workspace.selectedTabID) { _, id in withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(id) } }
             }
@@ -156,6 +188,35 @@ struct PanelView: View {
             iconButton("paintpalette", "Tab color and icon · ⌘⇧A") { store.customizeTab(store.tab.id) }
         }
         .padding(.bottom, 13)
+    }
+
+    private func updateTabDrag(_ id: UUID) {
+        let ids = store.workspace.tabs.map(\.id)
+        guard let origin = ids.firstIndex(of: id), let frame = tabDragFrames[id] else { return }
+        let center = frame.midX + tabDragTranslation
+        var destination = origin
+        if tabDragTranslation > 0 {
+            for index in ids.indices where index > origin {
+                if let other = tabDragFrames[ids[index]], center > other.midX { destination = index }
+            }
+        } else {
+            for index in ids.indices.reversed() where index < origin {
+                if let other = tabDragFrames[ids[index]], center < other.midX { destination = index }
+            }
+        }
+        tabDragTarget = destination == origin ? nil : ids[destination]
+    }
+
+    private func tabDragOffset(_ id: UUID) -> CGFloat {
+        guard let source = tabDragID else { return 0 }
+        if id == source { return tabDragTranslation }
+        let ids = store.workspace.tabs.map(\.id)
+        guard let target = tabDragTarget, let origin = ids.firstIndex(of: source),
+              let destination = ids.firstIndex(of: target), let index = ids.firstIndex(of: id),
+              let frame = tabDragFrames[source] else { return 0 }
+        if destination > origin && index > origin && index <= destination { return -(frame.width + 5) }
+        if destination < origin && index >= destination && index < origin { return frame.width + 5 }
+        return 0
     }
 
     private var addField: some View {
@@ -773,6 +834,13 @@ private struct TabAppearanceView: View {
 
 
 private struct TaskRowFrames: PreferenceKey {
+    static let defaultValue: [UUID: CGRect] = [:]
+    static func reduce(value: inout [UUID: CGRect], nextValue: () -> [UUID: CGRect]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, new in new })
+    }
+}
+
+private struct TabFrames: PreferenceKey {
     static let defaultValue: [UUID: CGRect] = [:]
     static func reduce(value: inout [UUID: CGRect], nextValue: () -> [UUID: CGRect]) {
         value.merge(nextValue(), uniquingKeysWith: { _, new in new })

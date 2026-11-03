@@ -244,3 +244,23 @@ private func unwrap<T>(_ value: T?) throws -> T { try #require(value) }
     try data.validate()
     #expect(try JSONDecoder().decode(Workspace.self, from: JSONEncoder().encode(data)) == data)
 }
+
+@Test func tabReorderingPreservesSelectionAndContents() throws {
+    var data = Workspace()
+    let first = data.selectedTabID
+    _ = data.addTask(title: "Keep task", tabID: first)
+    let second = try unwrap(data.addTab(name: "Second"))
+    let third = try unwrap(data.addTab(name: "Third"))
+    let contents = Dictionary(uniqueKeysWithValues: data.tabs.map { ($0.id, $0) })
+    data.reorderTab(id: third, relativeTo: first)
+    #expect(data.tabs.map(\.id) == [third, first, second])
+    #expect(data.selectedTabID == third)
+    data.reorderTab(id: third, relativeTo: second)
+    #expect(data.tabs.map(\.id) == [first, second, third])
+    #expect(Dictionary(uniqueKeysWithValues: data.tabs.map { ($0.id, $0) }) == contents)
+    let unchanged = data
+    data.reorderTab(id: UUID(), relativeTo: first)
+    #expect(data == unchanged)
+    try data.validate()
+    #expect(try JSONDecoder().decode(Workspace.self, from: JSONEncoder().encode(data)) == data)
+}

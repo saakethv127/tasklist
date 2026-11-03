@@ -86,3 +86,5 @@ Two-finger horizontal swipes over the task content navigate session history: swi
 Drag a task’s left-hand grip onto a sibling to reorder it, in either the main list or a task’s subtask list. Order saves automatically. Only top-level tasks have a separate move icon (or **Move** in detail). Moving one transfers all its descendants to the destination tab and opens it there. Subtasks cannot move independently between tabs.
 
 During reordering, the grabbed row follows the pointer and sibling rows slide aside to preview its new position. Expanded descendants move with their parent. Release to save the order. Task and subtask rows highlight on hover; the separate move control uses the same row height for its own hover highlight.
+
+Drag a tab directly by its name to reorder tabs. Other tabs slide aside during the drag; releasing saves the new order without changing the selected tab. A normal click still switches tabs.

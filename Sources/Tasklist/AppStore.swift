@@ -117,6 +117,10 @@ enum Prompt {
             if let iconID { data.tabs[index].iconID = iconID }
         }
     }
+    func reorderTab(_ id: UUID, relativeTo target: UUID) {
+        change { $0.reorderTab(id: id, relativeTo: target) }
+        flush()
+    }
     func selectTab(_ id: UUID) {
         draggedTaskID = nil
         dropTargetID = nil

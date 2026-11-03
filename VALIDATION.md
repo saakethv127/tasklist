@@ -86,3 +86,7 @@ Top-level-only move restriction: Move controls are hidden for nested rows and ne
 ## Live reorder and hover feedback
 
 Reordering now snapshots visible sibling geometry at drag start, lifts the grabbed branch with the pointer, and spring-animates intervening branches into the preview gap. The model is changed only on release. Native UI dragging verified a root moving above another root with descendants intact. All row depths have hover feedback; compact move controls use the measured task-row height for their independent highlight, including wrapped titles.
+
+## Tab dragging
+
+All 15 tests pass, including tab reorder in both directions, preservation of selected tab and task contents, invalid-ID no-op, and serialization. Native UI drag from the selected tab name reordered the tabs; saved JSON confirmed the new order. A normal tab click afterward still switched tabs correctly. The preview uses horizontal sibling displacement with no extra drag handle.
