@@ -1,0 +1,105 @@
+import Foundation
+import Testing
+@testable import TasklistCore
+
+@Test func nestedTasksRemainIsolatedAndDeleteWithTheirParent() throws {
+    var data = Workspace()
+    let inbox = data.selectedTabID
+    let root = try unwrap(data.addTask(title: "Plan release", tabID: inbox))
+    let child = try unwrap(data.addTask(title: "Review", tabID: inbox, parentID: root))
+    let grandchild = try unwrap(data.addTask(title: "Check links", tabID: inbox, parentID: child))
+    let unrelated = try unwrap(data.addTask(title: "Keep this", tabID: inbox))
+    let other = try unwrap(data.addTab(name: "Personal"))
+    let otherTask = try unwrap(data.addTask(title: "Read", tabID: other))
+    let invalid = data.addTask(title: "Invalid parent", tabID: other, parentID: root)
+    #expect(invalid == nil)
+    #expect(data.tabs[0].descendants(of: root) == [child, grandchild])
+    data.deleteTask(id: root, tabID: inbox)
+    #expect(data.tabs[0].tasks.map(\.id) == [unrelated])
+    #expect(data.tabs[1].tasks.map(\.id) == [otherTask])
+    try data.validate()
+}
+
+@Test func deleteTabsMaintainsValidSelectionAndLastTab() throws {
+    var data = Workspace()
+    let inbox = data.selectedTabID
+    let work = try unwrap(data.addTab(name: "Work"))
+    data.deleteTab(id: inbox)
+    #expect(data.selectedTabID == work)
+    data.deleteTab(id: work)
+    #expect(data.tabs.count == 1)
+    #expect(data.selectedTab.name == "Inbox")
+    let blank = data.addTab(name: "  \n ")
+    #expect(blank == nil)
+    try data.validate()
+}
+
+@Test func searchIncludesTabsNestedTasksNotesAndCompletedItems() throws {
+    var data = Workspace()
+    let tab = try unwrap(data.addTab(name: "Engineering"))
+    let root = try unwrap(data.addTask(title: "Launch", tabID: tab))
+    let child = try unwrap(data.addTask(title: "Documentation", tabID: tab, parentID: root))
+    data.updateTask(id: child, tabID: tab) { $0.notes = "Read [Swift](https://swift.org)"; $0.isComplete = true }
+    #expect(data.search("swift").map(\.taskID) == [child])
+    #expect(data.search("engineering").contains { $0.taskID == nil && $0.tabID == tab })
+    #expect(data.search("launch documentation").map(\.taskID) == [child])
+    #expect(data.search("SWIFT").first?.isComplete == true)
+    #expect(data.search("unfindable").isEmpty)
+}
+
+@Test func atomicPersistenceRoundTripsUnicodeNotesAndSelection() throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let storage = WorkspaceStorage(url: directory.appendingPathComponent("tasks.json"))
+    var data = try storage.load()
+    let tab = try unwrap(data.addTab(name: "旅行 ✨"))
+    let task = try unwrap(data.addTask(title: "Book café", tabID: tab))
+    data.updateTask(id: task, tabID: tab) { $0.notes = "## Plan\n- **Coffee**\n[Map](https://example.com)" }
+    try storage.save(data)
+    #expect(try storage.load() == data)
+    data.updateTask(id: task, tabID: tab) { $0.isComplete = true }
+    try storage.save(data)
+    #expect(try storage.load() == data)
+}
+
+@Test func corruptAndFutureDataAreRejectedWithoutModification() throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    let url = directory.appendingPathComponent("tasks.json")
+    let storage = WorkspaceStorage(url: url)
+    let corrupt = Data("not json".utf8)
+    try corrupt.write(to: url)
+    #expect(throws: (any Error).self) { try storage.load() }
+    #expect(try Data(contentsOf: url) == corrupt)
+    var future = Workspace()
+    future.version = 99
+    let encoded = try JSONEncoder().encode(future)
+    try encoded.write(to: url)
+    #expect(throws: (any Error).self) { try storage.load() }
+    #expect(try Data(contentsOf: url) == encoded)
+}
+
+@Test func rejectsCyclesOrOrphans() throws {
+    var data = Workspace()
+    let tab = data.selectedTabID
+    let task = try unwrap(data.addTask(title: "Task", tabID: tab))
+    data.updateTask(id: task, tabID: tab) { $0.parentID = task }
+    #expect(throws: (any Error).self) { try data.validate() }
+    data.updateTask(id: task, tabID: tab) { $0.parentID = UUID() }
+    #expect(throws: (any Error).self) { try data.validate() }
+}
+
+@Test func searchLatencyForLargePersonalWorkspace() throws {
+    let tabs = (0..<10).map { index in
+        TaskTab(name: "Tab \(index)", tasks: (0..<100).map { TaskItem(title: "Task \($0)", notes: "Some useful detail for item \($0)") })
+    }
+    let data = Workspace(tabs: tabs)
+    let start = ContinuousClock.now
+    for _ in 0..<10 { #expect(data.search("detail 42").count == 10) }
+    let duration = start.duration(to: .now)
+    print("Search benchmark: 10 searches across 1,000 tasks: \(duration)")
+    #expect(duration < .seconds(2))
+}
+
+private func unwrap<T>(_ value: T?) throws -> T { try #require(value) }
