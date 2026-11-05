@@ -272,3 +272,36 @@ public struct TaskSwipeGesture {
         return true
     }
 }
+
+// Click-and-drag on a row: choose one axis for the entire gesture. Unlike
+// history swipes, deletion is armed by distance and commits only on release.
+public struct TaskRowDragGesture {
+    public enum Mode { case undecided, reorder, delete, ignored }
+    public static let deleteThreshold = 96.0
+    public private(set) var mode: Mode = .undecided
+    public private(set) var distance = 0.0
+    public var isArmed: Bool { mode == .delete && distance >= Self.deleteThreshold }
+    public var offset: Double {
+        min(distance, Self.deleteThreshold) + max(0, distance - Self.deleteThreshold) * 0.25
+    }
+    public init() {}
+
+    // Returns true only when crossing into the armed state, for the haptic tick.
+    @discardableResult public mutating func update(x: Double, y: Double) -> Bool {
+        let wasArmed = isArmed
+        if mode == .undecided {
+            guard max(abs(x), abs(y)) >= 8 else { return false }
+            if abs(x) > abs(y) * 1.2 { mode = x > 0 ? .delete : .ignored }
+            else if abs(y) > abs(x) * 1.2 { mode = .reorder }
+        }
+        distance = mode == .delete ? max(0, x) : 0
+        return isArmed && !wasArmed
+    }
+
+    public mutating func finish(x: Double, y: Double) -> Bool {
+        update(x: x, y: y)
+        let shouldDelete = isArmed
+        self = Self()
+        return shouldDelete
+    }
+}

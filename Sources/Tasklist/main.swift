@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import Carbon
+import OSLog
 #if SWIFT_PACKAGE
 import TasklistCore
 #endif
@@ -22,6 +23,8 @@ final class TaskPanel: NSPanel {
     private var diagnosticsURL: URL?
     private var lastToggleAction = "launch"
     private var lastToggleDuration = 0.0
+    private let windowLogger = Logger(subsystem: "com.saakethv.tasklist", category: "window")
+    private var windowActionSequence = 0
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Launch Services normally enforces this; also guard direct executable launches.
@@ -55,13 +58,19 @@ final class TaskPanel: NSPanel {
             return self.store.handleScroll(event) ? nil : event
         }
         NotificationCenter.default.addObserver(self, selector: #selector(screenChanged), name: NSApplication.didChangeScreenParametersNotification, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(writeDiagnostics), name: NSWindow.didChangeOcclusionStateNotification, object: panel)
-        NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(writeDiagnostics), name: NSWorkspace.activeSpaceDidChangeNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(windowStateChanged(_:)), name: NSWindow.didChangeOcclusionStateNotification, object: panel)
+        for name in [NSWorkspace.activeSpaceDidChangeNotification, NSWorkspace.willSleepNotification, NSWorkspace.didWakeNotification, NSWorkspace.screensDidSleepNotification, NSWorkspace.screensDidWakeNotification] {
+            NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(windowStateChanged(_:)), name: name, object: nil)
+        }
+        for name in [NSApplication.didHideNotification, NSApplication.didUnhideNotification] {
+            NotificationCenter.default.addObserver(self, selector: #selector(windowStateChanged(_:)), name: name, object: nil)
+        }
+        logWindowState("launch")
         if !args.contains("--hidden") { show() }
     }
 
-    private func setupPanel() {
-        panel = TaskPanel(contentRect: NSRect(x: 0, y: 0, width: 400, height: 560), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+    private func makePanel() -> TaskPanel {
+        let panel = TaskPanel(contentRect: NSRect(x: 0, y: 0, width: 400, height: 560), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         panel.title = "Tasklist"
         panel.identifier = NSUserInterfaceItemIdentifier("TasklistPanel")
         panel.isFloatingPanel = true
@@ -78,6 +87,11 @@ final class TaskPanel: NSPanel {
         panel.hasShadow = true
         panel.isMovable = false
         panel.animationBehavior = .none
+        return panel
+    }
+
+    private func setupPanel() {
+        panel = makePanel()
         let host = NSHostingView(rootView: PanelView(store: store))
         host.frame = NSRect(x: 0, y: 0, width: 400, height: 560)
         host.autoresizingMask = [.width, .height]
@@ -134,6 +148,7 @@ final class TaskPanel: NSPanel {
     }
 
     @objc private func statusClicked() {
+        logWindowState("input.status-item")
         if NSApp.currentEvent?.type == .rightMouseUp {
             let menu = NSMenu()
             let toggle = menu.addItem(withTitle: "Show / Hide Tasklist", action: #selector(togglePanel), keyEquivalent: "")
@@ -152,7 +167,9 @@ final class TaskPanel: NSPanel {
         let handlerStatus = InstallEventHandler(GetApplicationEventTarget(), { _, _, context in
             guard let context else { return OSStatus(eventNotHandledErr) }
             MainActor.assumeIsolated {
-                Unmanaged<AppDelegate>.fromOpaque(context).takeUnretainedValue().togglePanel()
+                let delegate = Unmanaged<AppDelegate>.fromOpaque(context).takeUnretainedValue()
+                delegate.logWindowState("input.hotkey")
+                delegate.togglePanel()
             }
             return noErr
         }, 1, &eventType, context, &eventHandler)
@@ -162,11 +179,15 @@ final class TaskPanel: NSPanel {
         }
         let id = EventHotKeyID(signature: 0x544C5354, id: 1)
         let status = RegisterEventHotKey(UInt32(kVK_ANSI_Semicolon), UInt32(cmdKey | optionKey), id, GetApplicationEventTarget(), 0, &hotkey)
+        windowLogger.notice("Hotkey registration status: \(status)")
         if status != noErr { store.hotkeyError = "⌘⌥; is unavailable (\(status)). Check for another app using it; the menu-bar icon still works." }
     }
 
     @objc func togglePanel() {
-        if panel.isVisible { hide() } else { show() }
+        logWindowState("toggle.before")
+        // AppKit can report a window as visible while it remains on an inactive
+        // Space. In that state the user is asking to reveal it, not hide it.
+        if panel.isVisible && panel.isOnActiveSpace { hide() } else { show() }
     }
 
     private func positionPanel() {
@@ -175,10 +196,37 @@ final class TaskPanel: NSPanel {
         let frame = screen.visibleFrame
         panel.setFrameOrigin(NSPoint(x: frame.minX + 16, y: frame.minY + 16))
     }
-    @objc private func screenChanged() { if panel.isVisible { positionPanel() } }
+    @objc private func screenChanged() {
+        logWindowState("screens.before-reposition")
+        if panel.isVisible { positionPanel() }
+        logWindowState("screens.after-reposition")
+    }
+
+    @objc private func windowStateChanged(_ notification: Notification) {
+        logWindowState(notification.name.rawValue)
+        writeDiagnostics()
+    }
+
+    private func restorePanelToActiveSpace() {
+        logWindowState("space-recovery.before")
+        let previous = panel!
+        previous.orderOut(nil)
+        NotificationCenter.default.removeObserver(self, name: NSWindow.didChangeOcclusionStateNotification, object: previous)
+        // Retain the same hosting view and AppStore, including in-progress edits.
+        // A fresh native window gets fresh Space membership from WindowServer.
+        let content = previous.contentView
+        previous.contentView = nil
+        panel = makePanel()
+        panel.contentView = content
+        NotificationCenter.default.addObserver(self, selector: #selector(windowStateChanged(_:)), name: NSWindow.didChangeOcclusionStateNotification, object: panel)
+        previous.close()
+        logWindowState("space-recovery.after")
+    }
 
     private func show() {
         let start = ProcessInfo.processInfo.systemUptime
+        logWindowState("show.before")
+        if !panel.isOnActiveSpace { restorePanelToActiveSpace() }
         positionPanel()
         // A nonactivating panel can become key for typing without activating the app
         // or asking macOS to bring a different Space forward.
@@ -191,6 +239,7 @@ final class TaskPanel: NSPanel {
 
     private func hide() {
         let start = ProcessInfo.processInfo.systemUptime
+        logWindowState("hide.before")
         store.cancelSwipe()
         store.draggedTaskID = nil
         store.dropTargetID = nil
@@ -202,6 +251,15 @@ final class TaskPanel: NSPanel {
     }
 
     private func recordToggle(start: TimeInterval, action: String) {
+        logWindowState("\(action).after")
+        windowActionSequence += 1
+        let sequence = windowActionSequence
+        // WindowServer/occlusion updates may arrive after the ordering call returns.
+        // One bounded check per action; no recurring timer or recovery side effects.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+            guard let self, self.windowActionSequence == sequence else { return }
+            self.logWindowState("\(action).settled")
+        }
         guard diagnosticsURL != nil else { return }
         let elapsed = (ProcessInfo.processInfo.systemUptime - start) * 1000
         toggleSamples.append(elapsed)
@@ -211,13 +269,44 @@ final class TaskPanel: NSPanel {
         writeDiagnostics()
     }
 
+    private func logWindowState(_ event: String) {
+        guard let panel else { return }
+        let windows = CGWindowListCopyWindowInfo(.optionIncludingWindow, CGWindowID(panel.windowNumber)) as? [[String: Any]]
+        let serverWindow = windows?.first { ($0[kCGWindowNumber as String] as? NSNumber)?.intValue == panel.windowNumber }
+        let state: [String: Any] = [
+            "event": event,
+            "sequence": windowActionSequence,
+            "pid": ProcessInfo.processInfo.processIdentifier,
+            "os": ProcessInfo.processInfo.operatingSystemVersionString,
+            "windowNumber": panel.windowNumber,
+            "visible": panel.isVisible,
+            "occlusionVisible": panel.occlusionState.contains(.visible),
+            "activeSpace": panel.isOnActiveSpace,
+            "windowServerOnScreen": serverWindow?[kCGWindowIsOnscreen as String] as? Bool ?? false,
+            "windowServerEntryFound": serverWindow != nil,
+            "key": panel.isKeyWindow,
+            "appHidden": NSApp.isHidden,
+            "appActive": NSApp.isActive,
+            "frame": NSStringFromRect(panel.frame),
+            "alpha": panel.alphaValue,
+            "level": panel.level.rawValue,
+            "collectionBehavior": panel.collectionBehavior.rawValue,
+            "mouse": NSStringFromPoint(NSEvent.mouseLocation),
+            "screens": NSScreen.screens.map { ["frame": NSStringFromRect($0.frame), "visibleFrame": NSStringFromRect($0.visibleFrame)] }
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: state, options: [.sortedKeys]),
+              let message = String(data: data, encoding: .utf8) else { return }
+        // Only window metadata: never task contents, text input, or screenshots.
+        windowLogger.notice("\(message, privacy: .public)")
+    }
+
     @objc private func writeDiagnostics() {
         guard let diagnosticsURL, let panel else { return }
         let data: [String: Any] = ["lastAction": lastToggleAction, "lastDurationMS": lastToggleDuration, "samplesMS": toggleSamples, "visible": panel.isVisible, "isKey": panel.isKeyWindow, "frame": NSStringFromRect(panel.frame), "spaceActive": panel.isOnActiveSpace, "onScreen": panel.occlusionState.contains(.visible), "frontmostApp": NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "", "appActive": NSApp.isActive, "pid": ProcessInfo.processInfo.processIdentifier]
         if let json = try? JSONSerialization.data(withJSONObject: data, options: [.prettyPrinted, .sortedKeys]) { try? json.write(to: diagnosticsURL, options: .atomic) }
     }
 
-    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { show(); return false }
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { logWindowState("input.reopen"); show(); return false }
     func applicationWillTerminate(_ notification: Notification) {
         store?.flush()
         if let hotkey { UnregisterEventHotKey(hotkey) }

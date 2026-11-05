@@ -2,6 +2,56 @@ import Foundation
 import Testing
 @testable import TasklistCore
 
+@Test func rowDeletionRequiresThresholdAtRelease() {
+    var gesture = TaskRowDragGesture()
+    let result1 = gesture.update(x: 5, y: 1)
+    #expect(!result1)
+    #expect(gesture.mode == .undecided)
+    let result2 = gesture.update(x: 50, y: 2)
+    #expect(!result2)
+    #expect(gesture.mode == .delete)
+    #expect(!gesture.isArmed)
+    let result3 = gesture.update(x: 96, y: 3)
+    #expect(result3)
+    #expect(gesture.isArmed)
+    let result4 = gesture.update(x: 130, y: 3)
+    #expect(!result4) // no repeated haptics above threshold
+    #expect(gesture.offset > 96 && gesture.offset < 130)
+    let result5 = gesture.finish(x: 60, y: 3)
+    #expect(!result5) // final release position cancels
+    #expect(gesture.mode == .undecided)
+    #expect(gesture.offset == 0)
+    let result6 = gesture.finish(x: 100, y: 2)
+    #expect(result6)
+    let result7 = gesture.finish(x: 0, y: 0)
+    #expect(!result7) // no stale armed state
+}
+
+@Test func rowDragLocksDirectionAndCanDisarm() {
+    var gesture = TaskRowDragGesture()
+    gesture.update(x: 2, y: 12)
+    #expect(gesture.mode == .reorder)
+    let result8 = gesture.finish(x: 150, y: 30)
+    #expect(!result8) // vertical reorder cannot turn into delete
+    gesture.update(x: -12, y: 2)
+    #expect(gesture.mode == .ignored)
+    let result9 = gesture.finish(x: 150, y: 2)
+    #expect(!result9)
+    gesture.update(x: 10, y: 10)
+    #expect(gesture.mode == .undecided) // wait for an intentional direction
+    let result10 = gesture.update(x: 100, y: 10)
+    #expect(result10)
+    let result11 = gesture.update(x: -5, y: 100)
+    #expect(!result11)
+    #expect(gesture.mode == .delete)
+    #expect(gesture.offset == 0)
+    #expect(!gesture.isArmed)
+    let result12 = gesture.update(x: 100, y: 100)
+    #expect(result12) // rearming gives another tick
+    let result13 = gesture.finish(x: 96, y: 100)
+    #expect(result13)
+}
+
 @Test func nestedTasksRemainIsolatedAndDeleteWithTheirParent() throws {
     var data = Workspace()
     let inbox = data.selectedTabID

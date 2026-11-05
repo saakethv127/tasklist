@@ -11,6 +11,10 @@ struct PanelView: View {
     @FocusState private var focusedField: Field?
     @State private var hoveredMoveTaskID: UUID?
     @State private var hoveredTaskID: UUID?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @GestureState private var rowGestureActive = false
+    @State private var rowGestureID: UUID?
+    @State private var rowGesture = TaskRowDragGesture()
     @State private var taskRowFrames: [UUID: CGRect] = [:]
     @State private var dragFrames: [UUID: CGRect] = [:]
     @State private var dragSiblings: [UUID] = []
@@ -55,8 +59,15 @@ struct PanelView: View {
         .onChange(of: store.focusRequest) { _, _ in
             focusEntry()
         }
-        .onChange(of: store.isSearching) { _, _ in focusEntry() }
-        .onChange(of: store.detailID) { _, _ in focusEntry() }
+        .onChange(of: store.isSearching) { _, _ in cancelTaskInteraction(); focusEntry() }
+        .onChange(of: store.detailID) { _, _ in cancelTaskInteraction(); focusEntry() }
+        .onChange(of: store.workspace.selectedTabID) { _, _ in cancelTaskInteraction() }
+        .onChange(of: store.prompt != nil) { _, showing in if showing { cancelTaskInteraction() } }
+        .onChange(of: rowGestureActive) { _, active in
+            // GestureState also resets when a drag is cancelled without onEnded.
+            if !active { cancelTaskInteraction() }
+        }
+        .onDisappear { cancelTaskInteraction() }
         .onChange(of: store.query) { _, _ in store.searchIndex = 0 }
         .popover(isPresented: $store.showHelp, arrowEdge: .top) { helpView }
         .popover(isPresented: Binding(get: { store.appearanceTabID != nil }, set: { if !$0 { store.appearanceTabID = nil } }), arrowEdge: .trailing) {
@@ -309,26 +320,15 @@ struct PanelView: View {
                         if !task.notes.isEmpty { Image(systemName: "text.alignleft").font(.system(size: 10)).foregroundStyle(.tertiary) }
                     }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
                 }.buttonStyle(.plain).accessibilityLabel("Open \(task.parentID == nil ? "task" : "subtask"): \(task.title)")
-                    .help("Click to open details; drag to reorder among siblings")
+                    .help("Click to open; drag vertically to reorder; drag right and release to delete")
             }
             .padding(.vertical, 3).padding(.horizontal, 6)
             .padding(.leading, CGFloat(min(depth, 3)) * 12)
             .contentShape(Rectangle())
-            .highPriorityGesture(DragGesture(minimumDistance: 6, coordinateSpace: .named("taskReorder"))
-                .onChanged { value in
-                    if store.draggedTaskID != task.id { beginTaskDrag(task) }
-                    dragTranslation = value.translation.height
-                    updateTaskDrag(task)
-                }
-                .onEnded { _ in
-                    let target = store.dropTargetID
-                    withAnimation(.spring(response: 0.25, dampingFraction: 0.86)) {
-                        if let target { store.reorderTask(task.id, relativeTo: target) }
-                        store.draggedTaskID = nil
-                        store.dropTargetID = nil
-                        dragTranslation = 0
-                    }
-                })
+            .highPriorityGesture(DragGesture(minimumDistance: 8, coordinateSpace: .named("taskReorder"))
+                .updating($rowGestureActive) { _, active, _ in active = true }
+                .onChanged { value in updateTaskInteraction(task, translation: value.translation) }
+                .onEnded { value in finishTaskInteraction(task, translation: value.translation) })
             .background(store.selectedTaskID == task.id ? accent.opacity(0.10) : Color.primary.opacity(hoveredTaskID == task.id ? 0.075 : 0), in: RoundedRectangle(cornerRadius: 10))
             .onHover { hovering in
                 if hovering { hoveredTaskID = task.id }
@@ -336,6 +336,10 @@ struct PanelView: View {
             }
             .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(store.draggedTaskID == task.id ? accent.opacity(0.65) : .clear, lineWidth: 1))
             .background(store.draggedTaskID == task.id ? Color(white: 0.19) : .clear, in: RoundedRectangle(cornerRadius: 10))
+            .background(isDeletingTask(task.id) ? Color(white: 0.17) : .clear, in: RoundedRectangle(cornerRadius: 10))
+            .offset(x: isDeletingTask(task.id) ? rowGesture.offset : 0)
+            .background(alignment: .leading) { deleteReveal(task.id) }
+            .clipShape(RoundedRectangle(cornerRadius: 10))
             .shadow(color: .black.opacity(store.draggedTaskID == task.id ? 0.3 : 0), radius: 8, y: 3)
             .background(GeometryReader { geometry in
                 Color.clear.preference(key: TaskRowFrames.self, value: [task.id: geometry.frame(in: .named("taskReorder"))])
@@ -352,9 +356,78 @@ struct PanelView: View {
             }
             if task.parentID == nil { moveTaskMenu(task, compact: true) }
         }
+        .transition(.asymmetric(insertion: .opacity, removal: reduceMotion ? .opacity : .move(edge: .trailing).combined(with: .opacity)))
         .offset(y: taskDragOffset(task.id))
         .zIndex(isLiftedTask(task.id) ? 1 : 0)
         .animation(isLiftedTask(task.id) ? nil : .spring(response: 0.24, dampingFraction: 0.86), value: store.dropTargetID)
+    }
+
+    private var rowSpring: Animation { reduceMotion ? .easeOut(duration: 0.12) : .spring(response: 0.28, dampingFraction: 0.82) }
+
+    private func isDeletingTask(_ id: UUID) -> Bool {
+        rowGestureID == id && rowGesture.mode == .delete
+    }
+
+    private func deleteReveal(_ id: UUID) -> some View {
+        let active = isDeletingTask(id)
+        let offset = active ? rowGesture.offset : 0
+        let progress = min(1, offset / TaskRowDragGesture.deleteThreshold)
+        let armed = active && rowGesture.isArmed
+        return ZStack(alignment: .leading) {
+            RoundedRectangle(cornerRadius: 10).fill(Color.red.opacity(armed ? 0.20 : 0.08))
+            Image(systemName: armed ? "trash.fill" : "trash")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(.red)
+                .frame(width: 30, height: 30)
+                .background(Color.red.opacity(armed ? 0.18 : 0), in: Circle())
+                .scaleEffect(reduceMotion ? 1 : (armed ? 1.12 : 0.55 + 0.45 * progress))
+                .rotationEffect(.degrees(reduceMotion || armed ? 0 : -18 * (1 - progress)))
+                .offset(x: min(20, max(0, (offset - 30) / 2)))
+                .animation(rowSpring, value: armed)
+        }
+        .frame(width: max(0, offset))
+        .opacity(min(1, progress * 3))
+        .allowsHitTesting(false).accessibilityHidden(true)
+    }
+
+    private func updateTaskInteraction(_ task: TaskItem, translation: CGSize) {
+        if rowGestureID == nil { rowGestureID = task.id }
+        guard rowGestureID == task.id else { return }
+        if rowGesture.update(x: translation.width, y: translation.height) {
+            NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+        }
+        if rowGesture.mode == .reorder {
+            if store.draggedTaskID != task.id { beginTaskDrag(task) }
+            dragTranslation = translation.height
+            updateTaskDrag(task)
+        }
+    }
+
+    private func finishTaskInteraction(_ task: TaskItem, translation: CGSize) {
+        guard rowGestureID == task.id else { return }
+        updateTaskInteraction(task, translation: translation)
+        let reordering = rowGesture.mode == .reorder
+        let target = store.dropTargetID
+        let shouldDelete = rowGesture.isArmed
+        withAnimation(rowSpring) {
+            _ = rowGesture.finish(x: translation.width, y: translation.height)
+            if shouldDelete { store.deleteTask(task.id) }
+            else if reordering, let target { store.reorderTask(task.id, relativeTo: target) }
+            resetTaskInteraction()
+        }
+    }
+
+    private func resetTaskInteraction() {
+        rowGestureID = nil
+        rowGesture = TaskRowDragGesture()
+        store.draggedTaskID = nil
+        store.dropTargetID = nil
+        dragTranslation = 0
+    }
+
+    private func cancelTaskInteraction() {
+        guard rowGestureID != nil else { return }
+        withAnimation(rowSpring) { resetTaskInteraction() }
     }
 
     private func beginTaskDrag(_ task: TaskItem) {

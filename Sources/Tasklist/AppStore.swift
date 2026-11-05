@@ -320,15 +320,7 @@ enum Prompt {
             navigation.reset()
             selectedTaskID = nil
         case .deleteTask(let id):
-            undoWorkspace = workspace
-            let parent = tab.tasks.first { $0.id == id }?.parentID
-            let deleted = tab.descendants(of: id).union([id])
-            let tabID = tab.id
-            change { $0.deleteTask(id: id, tabID: tabID) }
-            if let detailID, deleted.contains(detailID) { self.detailID = parent }
-            if let selectedTaskID, deleted.contains(selectedTaskID) { self.selectedTaskID = nil }
-            navigation.removeMissing(validIDs: Set(tab.tasks.map(\.id)))
-            if navigation.current != detailID { navigation.visit(detailID) }
+            deleteTask(id)
         }
         prompt = nil
         if case .newTab = value {
@@ -336,6 +328,19 @@ enum Prompt {
         } else {
             focusEntry()
         }
+        flush()
+    }
+    // Shared by confirmed menu deletions and deliberate swipe releases.
+    func deleteTask(_ id: UUID) {
+        guard let task = tab.tasks.first(where: { $0.id == id }) else { return }
+        undoWorkspace = workspace
+        let deleted = tab.descendants(of: id).union([id])
+        let tabID = tab.id
+        change { $0.deleteTask(id: id, tabID: tabID) }
+        if let detailID, deleted.contains(detailID) { self.detailID = task.parentID }
+        if let selectedTaskID, deleted.contains(selectedTaskID) { self.selectedTaskID = nil }
+        navigation.removeMissing(validIDs: Set(tab.tasks.map(\.id)))
+        if navigation.current != detailID { navigation.visit(detailID) }
         flush()
     }
     func undoDelete() {
@@ -444,13 +449,16 @@ enum Prompt {
         panel.appearance = NSAppearance(named: .darkAqua)
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .canJoinAllApplications]
         panel.level = .floating
+        panel.hidesOnDeactivate = false
         panel.title = "Color · \(tab.name)"
         panel.showsAlpha = false
         panel.isContinuous = true
         panel.color = NSColor(srgbRed: CGFloat((rgb >> 16) & 255) / 255, green: CGFloat((rgb >> 8) & 255) / 255, blue: CGFloat(rgb & 255) / 255, alpha: 1)
         panel.setTarget(self)
         panel.setAction(#selector(colorChanged(_:)))
-        panel.orderFront(nil)
+        // Tasklist's nonactivating panel can be used while another app is active.
+        // Ordinary ordering can leave the color panel hidden in that state.
+        panel.orderFrontRegardless()
         panel.makeKey()
     }
     @objc private func colorChanged(_ panel: NSColorPanel) {

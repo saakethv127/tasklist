@@ -20,7 +20,7 @@ This builds a release app, signs it locally, installs it to `~/Applications/Task
 
 For native Xcode development, open `Tasklist.xcodeproj`, select the **Tasklist** scheme and **My Mac**, then Run. The shared scheme also supports Instruments profiling. Quit an existing copy first; the app enforces one running instance.
 
-The menu-bar checklist icon also toggles the panel. Right-click it to quit. The app has no Dock icon. To start it automatically, add Tasklist in **System Settings → General → Login Items**.
+The menu-bar checklist icon also toggles the panel. If the panel has lost membership in the active desktop Space, showing it recreates its native window while keeping the existing task view and data. Right-click it to quit. The app has no Dock icon. To start it automatically, add Tasklist in **System Settings → General → Login Items**.
 
 ## Everyday use
 
@@ -30,7 +30,7 @@ The menu-bar checklist icon also toggles the panel. Right-click it to quit. The 
 - Each tab has an independent list. Right-click a tab to rename or delete it. The ellipsis menu also contains these actions.
 - New tabs open the appearance picker after you enter a name. Press **⌘⇧A**, click the palette button beside the tabs, choose **Tab appearance…** in the ellipsis menu, or right-click any tab → **Appearance…**. Choose a preset or **Custom color…** for the standard macOS color panel, plus a searchable collection of 2,019 bundled Lucide SVG icons. Search by name, keyword, or category; press Return to select the first result. Changes save automatically per tab and also identify tabs in global search. The header stays neutral.
 - Search covers tab names, task and subtask titles, descriptions, and parent context, including completed tasks.
-- Every task, subtask, and tab deletion requires confirmation. Deleting a parent removes its descendants; the prompt tells you how many. **Undo last deletion** in the ellipsis menu restores removed items without discarding subsequent edits. Undo is available for the current app session.
+- Click and drag a task or subtask right to reveal a red trash icon. At 96 points, the icon pops and a supported trackpad gives a haptic tick; release to delete immediately, or pull back below the threshold to cancel. Menu, keyboard, and tab deletions still require confirmation. Deleting a parent removes its descendants; the prompt tells you how many. **Undo last deletion** in the ellipsis menu restores removed items without discarding subsequent edits. Undo is available for the current app session.
 - Clicking another app leaves the panel visible. The hotkey or minus button hides it. Escape closes a prompt, search, or task detail first, then hides the list.
 
 ## Keyboard shortcuts
@@ -75,7 +75,14 @@ open dist/Tasklist.app --args --data-path /tmp/tasklist-test.json --diagnostics 
 
 Quit any existing Tasklist instance first. `--data-path` separates test data from your actual tasks. `--diagnostics` records the most recent 200 show/hide handler durations plus panel state; it is off by default. These timings measure app-side handling and synchronous display work, not physical key-to-photon latency. `--hidden` starts with the panel hidden.
 
-The app stays resident while hidden for fast toggling. It has no recurring timers. Its only scheduled work is a short save debounce after data changes. The bundle is locally signed for personal use; distributing it to other Macs would require Developer ID signing and notarization.
+Window troubleshooting metadata is always recorded locally in the macOS unified log under subsystem `com.saakethv.tasklist`, category `window`. It records shortcut/menu input, show/hide state before and after ordering, a settled check after 250 ms, and Space/display/sleep/wake transitions. Each entry includes the panel's AppKit visibility, active-Space and occlusion state, WindowServer on-screen state, frame, and connected display bounds. It does not record tasks, typed text, or screenshots. Retention is managed by macOS. If the panel becomes invisible, capture these logs **before restarting**:
+
+```sh
+/usr/bin/log show --last 1h --style compact \
+  --predicate 'subsystem == "com.saakethv.tasklist" AND category == "window"'
+```
+
+The app stays resident while hidden for fast toggling. It has no recurring timers. Scheduled work is limited to a short save debounce after data changes and one window-state diagnostic check 250 ms after each show/hide action. The bundle is locally signed for personal use; distributing it to other Macs would require Developer ID signing and notarization.
 
 Lucide icons and search metadata are bundled locally; the picker makes no network requests. Upstream attribution is included in `Sources/TasklistCore/Resources/Lucide-LICENSE.txt` and the app bundle. Run `python3 scripts/vendor-lucide.py` to reproduce the pinned collection, or pass a full upstream commit SHA to update it. Existing legacy icon selections remain supported.
 
@@ -83,10 +90,10 @@ Task rows use compact spacing in lists and details. Click the chevron to the lef
 
 Two-finger horizontal swipes over the task content navigate session history: swipe right for back, left for forward. An edge semicircle and arrow fill with the gesture; reaching the threshold navigates once with a light haptic tick. Short gestures retract, and vertical scrolling stays available. History resets when switching tabs; opening another task after going back replaces the forward branch. The tab strip keeps its own horizontal scrolling.
 
-Drag anywhere on a task’s highlighted surface to reorder it among siblings, in either the main list or a task’s subtask list. Order saves automatically. Only top-level tasks have a separate move icon (or **Move** in detail). Moving one transfers all its descendants to the destination tab and opens it there. Subtasks cannot move independently between tabs.
+Drag vertically anywhere on a task’s highlighted surface to reorder it among siblings, in either the main list or a task’s subtask list. Order saves automatically. Only top-level tasks have a separate move icon (or **Move** in detail). Moving one transfers all its descendants to the destination tab and opens it there. Subtasks cannot move independently between tabs.
 
 During reordering, the grabbed row follows the pointer and sibling rows slide aside to preview its new position. Expanded descendants move with their parent. Release to save the order. Task and subtask rows highlight on hover; the separate move control uses the same row height for its own hover highlight.
 
 Drag a tab directly by its name to reorder tabs. Other tabs slide aside during the drag; releasing saves the new order without changing the selected tab. A normal click still switches tabs.
 
-Task rows have no separate drag handle or detail chevron. Click the title/surface to open details; drag the row to reorder. Parent disclosure arrows still expand or collapse subtasks.
+Task rows have no separate drag handle or detail chevron. Click the title/surface to open details; drag vertically to reorder or right to delete. Parent disclosure arrows still expand or collapse subtasks.
